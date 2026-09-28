@@ -94,10 +94,23 @@ export function importBackup(file) {
   })
 }
 
+/** 机位记忆的场馆隔离复合键（exerciseId + venueMode） */
+export function equipmentKey(exerciseId, venueMode) {
+  return `${exerciseId}__${venueMode}`
+}
+
 /** ---------- 日志读写 ---------- */
 export function upsertDayLog(state, log) {
+  const venueMode = log.venueMode || 'newGym'
   const logs = (state.workoutLogs || []).filter(
-    (l) => !(l.user === log.user && l.day === log.day && l.date === log.date && l.cycleNumber === log.cycleNumber)
+    (l) =>
+      !(
+        l.user === log.user &&
+        l.day === log.day &&
+        l.date === log.date &&
+        l.cycleNumber === log.cycleNumber &&
+        (l.venueMode || 'newGym') === venueMode
+      )
   )
   return { ...state, workoutLogs: [log, ...logs] }
 }

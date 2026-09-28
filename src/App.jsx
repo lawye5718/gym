@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
-import { PLAN_LIBRARY, DAY_META } from './data/seedPlanData'
-import { loadState, saveState, upsertDayLog, saveEquipment } from './utils/storageSync'
+import { getExercisesForDayAndVenue, DAY_META } from './data/seedPlanData'
+import { loadState, saveState, upsertDayLog, saveEquipment, equipmentKey } from './utils/storageSync'
 import { getSmartPrescription } from './utils/overloadEngine'
 import HeaderSwitcher from './components/HeaderSwitcher'
 import DaySwiper from './components/DaySwiper'
@@ -48,8 +48,8 @@ export default function App() {
 
   const todayMeta = DAY_META.find((d) => d.day === currentDay)
   const todaysExercises = useMemo(
-    () => PLAN_LIBRARY.filter((e) => e.user === user && e.day === currentDay),
-    [user, currentDay]
+    () => getExercisesForDayAndVenue(user, currentDay, venueMode),
+    [user, currentDay, venueMode]
   )
 
   const restInserted = !!state.restDaysInserted?.[user]
@@ -69,7 +69,7 @@ export default function App() {
   }
 
   const handleSaveSeatMemory = (exerciseId, text) => {
-    persist(saveEquipment(state, exerciseId, text))
+    persist(saveEquipment(state, equipmentKey(exerciseId, venueMode), text))
   }
 
   const handleToggleRest = () => {
@@ -90,15 +90,16 @@ export default function App() {
     const cycleNumber = Number(state.cycleOffset?.[user] || 0) + 1
     const exercises = todaysExercises.map((ex) => {
       const draft = drafts[ex.id]
-      const prefill = getSmartPrescription(ex, state.workoutLogs).prefillSets
+      const prefill = getSmartPrescription(ex, venueMode, state.workoutLogs).prefillSets
       return {
         exerciseId: ex.id,
+        venueMode,
         day5SourceId: ex.prescription.day5SourceId || null,
         sets: draft?.sets || prefill,
         quickTags: draft?.quickTags || [],
       }
     })
-    const log = { user, day: currentDay, date, cycleNumber, exercises }
+    const log = { user, day: currentDay, date, cycleNumber, venueMode, exercises }
     persist(upsertDayLog(state, log))
     setDrafts({})
     setToast('今日战报已保存 ✓')
@@ -155,11 +156,11 @@ export default function App() {
           todaysExercises.length ? (
             todaysExercises.map((ex) => (
               <ExerciseCard
-                key={ex.id}
+                key={`${user}_${currentDay}_${venueMode}_${ex.id}`}
                 exercise={ex}
                 venueMode={venueMode}
-                smartData={getSmartPrescription(ex, state.workoutLogs)}
-                seatMemory={state.equipmentSettings?.[ex.id]?.text}
+                smartData={getSmartPrescription(ex, venueMode, state.workoutLogs)}
+                seatMemory={state.equipmentSettings?.[equipmentKey(ex.id, venueMode)]?.text}
                 onSaveSeatMemory={handleSaveSeatMemory}
                 onSetComplete={handleSetComplete}
                 onUpdateSetData={handleUpdateSetData}

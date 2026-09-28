@@ -1,5 +1,6 @@
 /**
  * 渐进超负荷雷达 + Day 5 85% 自动配重引擎
+ * 支持按场馆（newGym / oldGym / home）隔离预填与升级判定，避免跨馆串台。
  */
 
 /** 按健身房器械最小步进取整（默认 2.5kg，小器械 1kg） */
@@ -11,7 +12,7 @@ export function roundToGymStep(weight, step = 2.5) {
 /** 挂片机专属：拆解单边标准杠铃片组合 */
 export function calculatePlatesPerSide(weightPerSide) {
   const plates = [20, 15, 10, 5, 2.5, 1.25]
-  let remaining = weightPerSide
+  let remaining = Number(weightPerSide) || 0
   const result = []
   for (const p of plates) {
     const count = Math.floor((remaining + 0.01) / p)
@@ -23,18 +24,29 @@ export function calculatePlatesPerSide(weightPerSide) {
   return result.length ? `单边挂片: ${result.join(' + ')}` : '空杆/待配重'
 }
 
-function findLastLogForExercise(exerciseId, allLogs) {
+/** 生成场馆隔离的唯一动作存储键，防止新馆挂片、旧馆插销、家庭哑铃配重互相污染 */
+export function getVenueExerciseKey(exerciseId, venueMode) {
+  return `${exerciseId}__${venueMode}`
+}
+
+function findLastLogForExercise(exerciseId, venueMode, allLogs) {
   for (const log of allLogs) {
-    const found = log.exercises?.find((e) => e.exerciseId === exerciseId)
+    if (venueMode && log.venueMode && log.venueMode !== venueMode) continue
+    const found = log.exercises?.find(
+      (e) => e.exerciseId === exerciseId && (!venueMode || !e.venueMode || e.venueMode === venueMode)
+    )
     if (found && found.sets?.length > 0) return { ...found, date: log.date }
   }
   return null
 }
 
-function findLastDay5LogForSource(sourceId, allLogs) {
+function findLastDay5LogForSource(exerciseId, venueMode, allLogs) {
   for (const log of allLogs) {
+    if (venueMode && log.venueMode && log.venueMode !== venueMode) continue
     if (log.day === 5) {
-      const found = log.exercises?.find((e) => e.day5SourceId === sourceId)
+      const found = log.exercises?.find(
+        (e) => e.day5SourceId === exerciseId && (!venueMode || !e.venueMode || e.venueMode === venueMode)
+      )
       if (found) return found
     }
   }
@@ -43,15 +55,18 @@ function findLastDay5LogForSource(sourceId, allLogs) {
 
 /**
  * 获取今日某动作的「默认预填数据」与「渐进超负荷升级提醒」
+ * @param {Object} exercisePlan 动作计划对象（含 id / category / prescription / day）
+ * @param {String} venueMode    当前场馆 newGym | oldGym | home
+ * @param {Array}  allLogs      历史日志数组（时间倒序）
  */
-export function getSmartPrescription(exercisePlan, allLogs) {
+export function getSmartPrescription(exercisePlan, venueMode, allLogs) {
   const { id, category, prescription, day } = exercisePlan
   const [minReps, maxReps] = prescription.repRange
-  const lastExerciseLog = findLastLogForExercise(id, allLogs)
+  const lastExerciseLog = findLastLogForExercise(id, venueMode, allLogs)
 
-  // Day 5：按主日 85% 自动折算
+  // Day 5：按当前场馆主日 85% 自动折算
   if (day === 5 && prescription.day5SourceId) {
-    const mainDayLog = findLastLogForExercise(prescription.day5SourceId, allLogs)
+    const mainDayLog = findLastLogForExercise(prescription.day5SourceId, venueMode, allLogs)
     if (mainDayLog && mainDayLog.sets.length > 0) {
       const mainWeight = mainDayLog.sets[0].weight
       const ratio = category === 'compound' ? 0.85 : 1.0
@@ -95,7 +110,7 @@ export function getSmartPrescription(exercisePlan, allLogs) {
     }
   }
 
-  // 常规主日：100% 继承上次
+  // 常规主日：100% 继承当前场馆上次
   const prefillSets = Array.from({ length: prescription.sets }, (_, i) => {
     const prevSet = lastExerciseLog.sets[i] || lastExerciseLog.sets[lastExerciseLog.sets.length - 1]
     return { setNo: i + 1, weight: prevSet.weight, reps: prevSet.reps, completed: false }
@@ -109,7 +124,7 @@ export function getSmartPrescription(exercisePlan, allLogs) {
   const avgReps =
     completedSets.reduce((sum, s) => sum + Number(s.reps), 0) / (completedSets.length || 1)
 
-  const lastDay5Log = findLastDay5LogForSource(id, allLogs)
+  const lastDay5Log = findLastDay5LogForSource(id, venueMode, allLogs)
   const day5Exploded = lastDay5Log && lastDay5Log.sets.some((s) => s.reps >= 16)
 
   let overloadBanner = null
