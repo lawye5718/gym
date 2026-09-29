@@ -12,6 +12,10 @@
 #       应用容器本身在 NAS 上 --restart always 实现 24h 常驻。
 set -e
 
+# Synology ContainerManager 的 docker 位于 /usr/local/bin，
+# 非交互式 SSH 会话的默认 PATH 不含该路径，需显式补充
+export PATH="/usr/local/bin:$PATH"
+
 IMAGE=gym-tracker
 HOST_PORT=8787   # 宿主机映射端口，避开 DSM 5000 / 已有服务，避免冲突
 CONTAINER_PORT=80
