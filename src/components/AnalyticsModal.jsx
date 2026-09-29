@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react'
-import { X, Search, TrendingUp, Dumbbell, History } from 'lucide-react'
-import { PLAN_LIBRARY, DAY_META } from '../data/seedPlanData'
-import { queryWorkoutLogs, calculateCycleMuscleVolume, buildTrendSeries } from '../utils/storageSync'
+import { Dumbbell, History, TrendingUp, X } from 'lucide-react'
+import { DAY_META } from '../data/seedPlanData'
+import {
+  buildTrendSeries,
+  calculateACSMCycleVolume,
+  queryWorkoutLogs,
+} from '../utils/storageSync'
 
 const QUICK_TAGS = [
   '⚡1.5s减速停(RIR2)',
@@ -11,18 +15,60 @@ const QUICK_TAGS = [
   '⚠️关节微紧',
 ]
 
-const TAG_COLORS = ['bg-indigo-500/20 text-indigo-200', 'bg-emerald-500/20 text-emerald-200']
-
-function nameOf(exerciseId) {
-  const p = PLAN_LIBRARY.find((x) => x.id === exerciseId)
+function nameOf(exerciseId, allPlanItems) {
+  const p = (allPlanItems || []).find((x) => x.id === exerciseId)
   if (!p) return exerciseId
   return p.variants?.newGym?.name || p.order || exerciseId
 }
 
+/** 有氧 / 静息打卡徽章卡（历史战报） */
+function CardioBadge({ cardio, theme }) {
+  if (!cardio?.completed) return null
+  const isZone2 = cardio.type === 'zone2'
+  const isHiit = cardio.type === 'hiit_4x4'
+  const icon = isZone2 ? '🫀' : isHiit ? '🔥' : '😴'
+  const title = isZone2 ? 'Zone 2 洗刷日' : isHiit ? '4×4 HIIT 绞肉机' : '静息恢复日'
+  const detail = isZone2
+    ? `${cardio.durationMinutes} 分钟 · 平均 ${cardio.avgHeartRate} bpm`
+    : isHiit
+      ? `${cardio.roundsCompleted} 轮 · 峰值 ${cardio.peakHeartRate} / 恢复 ${cardio.recoveryHeartRate} bpm`
+      : cardio.cnsStatus || '中枢神经与肌糖原恢复'
+  const ring = isZone2
+    ? 'border-sky-400/40 bg-sky-500/10'
+    : isHiit
+      ? 'border-rose-400/40 bg-rose-500/10'
+      : 'border-emerald-400/40 bg-emerald-500/10'
+
+  return (
+    <div className={`mt-1.5 rounded-xl border p-2 ${ring}`}>
+      <div className="flex items-center gap-1.5 text-[11px] font-bold">
+        <span>{icon}</span>
+        <span>{title}</span>
+        <span className="ml-auto opacity-60 text-[10px]">
+          ✅ 已打卡{cardio.savedAt ? ` · ${cardio.savedAt}` : ''}
+        </span>
+      </div>
+      <div className="text-[10px] opacity-80 mt-0.5">{detail}</div>
+      {cardio.advanceCycle && (
+        <div className="text-[10px] text-amber-300 mt-0.5">🎉 已开启下一轮微循环</div>
+      )}
+      {(cardio.tags || []).length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {cardio.tags.map((t, i) => (
+            <span key={i} className="px-1.5 py-0.5 rounded-full bg-black/30 text-[10px]">
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** 轻量内联 SVG 趋势图（e1RM 折线 + 容量柱） */
-function TrendChart({ series }) {
+function TrendChart({ series, theme }) {
   if (!series || series.length < 2) {
-    return <p className="text-slate-400 text-xs py-6 text-center">至少两次记录才能画出趋势线</p>
+    return <p className="text-[11px] opacity-60 py-6 text-center">至少两次记录才能画出趋势线</p>
   }
   const W = 300
   const H = 140
@@ -36,6 +82,7 @@ function TrendChart({ series }) {
   const yE1 = (v) => H - pad - (v / maxE1) * (H - pad * 2)
   const yVol = (v) => H - pad - (v / maxVol) * (H - pad * 2)
   const line = e1.map((v, i) => `${xAt(i)},${yE1(v)}`).join(' ')
+  const accent = theme?.accentText?.includes('amber') ? 'fill-amber-500/40' : 'fill-cyan-500/40'
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
       {vol.map((v, i) => (
@@ -45,13 +92,13 @@ function TrendChart({ series }) {
           y={yVol(v)}
           width={14}
           height={H - pad - yVol(v)}
-          className="fill-sky-500/30"
+          className={accent}
           rx={2}
         />
       ))}
       <polyline points={line} fill="none" className="stroke-emerald-400" strokeWidth={2.5} />
       {series.map((s, i) => (
-        <text key={i} x={xAt(i)} y={H - 4} fontSize={8} textAnchor="middle" className="fill-slate-500">
+        <text key={i} x={xAt(i)} y={H - 4} fontSize={8} textAnchor="middle" className="opacity-50">
           {s.date.slice(5)}
         </text>
       ))}
@@ -59,6 +106,7 @@ function TrendChart({ series }) {
   )
 }
 
+/** ACSM 肌群容量达标进度条 */
 function VolumeBars({ groups }) {
   return (
     <div className="space-y-2.5">
@@ -67,13 +115,13 @@ function VolumeBars({ groups }) {
         const hit = g.sets >= g.target
         return (
           <div key={g.key}>
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-slate-300">{g.label}</span>
-              <span className={hit ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
+            <div className="flex justify-between text-[11px] mb-1">
+              <span className="opacity-80">{g.label}</span>
+              <span className={hit ? 'text-emerald-400 font-bold' : 'opacity-60'}>
                 {g.sets}/{g.target} 组 {hit ? '✓' : ''}
               </span>
             </div>
-            <div className="h-2.5 bg-ink-900 rounded-full overflow-hidden">
+            <div className="h-2.5 bg-black/40 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full ${hit ? 'bg-emerald-500' : 'bg-indigo-500'}`}
                 style={{ width: `${pct}%` }}
@@ -86,86 +134,74 @@ function VolumeBars({ groups }) {
   )
 }
 
+/** 出勤热力图 */
 function AttendanceHeatmap({ logs, user, cycleNumber }) {
-  const days = DAY_META.map((d) => d.day)
   const done = new Set(
-    logs
-      .filter((l) => l.user === user && l.cycleNumber === cycleNumber)
-      .map((l) => l.day)
+    logs.filter((l) => l.user === user && l.cycleNumber === cycleNumber).map((l) => l.day)
   )
   return (
     <div className="grid grid-cols-8 gap-1.5 mt-1">
-      {days.map((d) => (
+      {DAY_META.map((d) => (
         <div
-          key={d}
+          key={d.day}
           className={`aspect-square rounded-md flex items-center justify-center text-[10px] font-bold ${
-            done.has(d) ? 'bg-emerald-500/70 text-ink-900' : 'bg-ink-700 text-slate-500'
+            done.has(d.day) ? 'bg-emerald-500/70 text-slate-950' : 'bg-black/30 opacity-50'
           }`}
-          title={`Day ${d}`}
+          title={`Day ${d.day}`}
         >
-          {d}
+          {d.day}
         </div>
       ))}
     </div>
   )
 }
 
-export default function AnalyticsModal({ state, user, onClose, onToast }) {
+/**
+ * V2.5 全卡片化统计分析与历史检索抽屉
+ */
+export default function AnalyticsModal({
+  logs,
+  allPlanItems,
+  currentUser,
+  cycleNumber,
+  theme,
+  onClose,
+}) {
   const [tab, setTab] = useState('volume')
-  const [filters, setFilters] = useState({ keyword: '', tag: '', day: '', start: '', end: '' })
-  const [trendId, setTrendId] = useState('leo_d1_m1')
-
-  const allLogs = state.workoutLogs || []
-  const cycleNumber = useMemo(() => {
-    const userLogs = allLogs.filter((l) => l.user === user)
-    return userLogs.length ? Math.max(...userLogs.map((l) => Number(l.cycleNumber || 1))) : 1
-  }, [allLogs, user])
-
-  const filtered = useMemo(
-    () =>
-      queryWorkoutLogs(allLogs, {
-        user,
-        keyword: filters.keyword,
-        tag: filters.tag,
-        day: filters.day,
-        startDate: filters.start,
-        endDate: filters.end,
-      }),
-    [allLogs, user, filters]
-  )
+  const [keyword, setKeyword] = useState('')
+  const [trendId, setTrendId] = useState('')
 
   const groups = useMemo(
-    () => calculateCycleMuscleVolume(allLogs, PLAN_LIBRARY, user, cycleNumber),
-    [allLogs, user, cycleNumber]
+    () => calculateACSMCycleVolume(logs || [], allPlanItems || [], currentUser, cycleNumber),
+    [logs, allPlanItems, currentUser, cycleNumber]
   )
 
-  const trend = useMemo(() => buildTrendSeries(allLogs, user, trendId), [allLogs, user, trendId])
-
-  // 可选的主项动作（复合/孤立，用于趋势图）
   const trendOptions = useMemo(
     () =>
-      PLAN_LIBRARY.filter(
-        (p) => p.user === user && (p.category === 'compound' || p.category === 'isolation')
+      (allPlanItems || []).filter(
+        (p) =>
+          p.user === currentUser && (p.category === 'compound' || p.category === 'isolation')
       ),
-    [user]
+    [allPlanItems, currentUser]
   )
 
-  const exportJson = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `wava8day-backup-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    onToast?.('已导出 JSON 备份 💾')
-  }
+  const effectiveTrendId = trendId || trendOptions[0]?.id || ''
+  const trend = useMemo(
+    () => (effectiveTrendId ? buildTrendSeries(logs || [], currentUser, effectiveTrendId) : []),
+    [logs, currentUser, effectiveTrendId]
+  )
+
+  const filtered = useMemo(
+    () => queryWorkoutLogs(logs || [], { user: currentUser, keyword }),
+    [logs, currentUser, keyword]
+  )
 
   const TabBtn = ({ id, label, icon }) => (
     <button
+      type="button"
       onClick={() => setTab(id)}
-      className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-bold transition ${
-        tab === id ? 'bg-indigo-600 text-white' : 'text-slate-400'
+      className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-[11px] font-bold border transition ${
+        tab === id ? `bg-gradient-to-r ${theme.accentPrimary}` : theme.subCardBg
       }`}
     >
       {icon}
@@ -174,51 +210,50 @@ export default function AnalyticsModal({ state, user, onClose, onToast }) {
   )
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex flex-col" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/85 flex flex-col" onClick={onClose}>
       <div
-        className="flex-1 mt-8 bg-ink-900 rounded-t-3xl overflow-y-auto safe-bottom"
+        className={`flex-1 mt-8 rounded-t-3xl border-t overflow-y-auto safe-bottom ${theme.cardBg}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-ink-900/95 backdrop-blur z-10 flex items-center justify-between px-4 py-3 border-b border-slate-800">
-          <h2 className="text-base font-extrabold text-white">📊 {user === 'leo' ? 'Leo' : 'Linda'} 数据中心</h2>
-          <div className="flex items-center gap-2">
-            <button onClick={exportJson} className="text-[11px] text-slate-300 px-2 py-1.5 rounded-lg bg-ink-700">
-              导出备份
-            </button>
-            <button onClick={onClose} className="text-slate-400 p-1">
-              <X size={20} />
-            </button>
-          </div>
+        <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2.5 border-b border-white/10 backdrop-blur">
+          <h2 className="text-[13px] font-extrabold">
+            📊 {currentUser === 'leo' ? 'Leo' : 'Linda'} 数据中心
+          </h2>
+          <button type="button" onClick={onClose} className="opacity-70 p-1">
+            <X size={18} />
+          </button>
         </div>
 
         <div className="flex gap-1.5 p-3">
-          <TabBtn id="volume" label="容量达标" icon={<Dumbbell size={14} />} />
-          <TabBtn id="trend" label="力量趋势" icon={<TrendingUp size={14} />} />
-          <TabBtn id="history" label="历史检索" icon={<History size={14} />} />
+          <TabBtn id="volume" label="容量达标" icon={<Dumbbell size={13} />} />
+          <TabBtn id="trend" label="力量趋势" icon={<TrendingUp size={13} />} />
+          <TabBtn id="history" label="历史战报" icon={<History size={13} />} />
         </div>
 
-        <div className="px-3 pb-8">
+        <div className="px-3 pb-8 space-y-3">
           {tab === 'volume' && (
-            <div className="space-y-4">
-              <div className="rounded-2xl bg-ink-800 border border-slate-700 p-4">
-                <div className="text-sm font-bold text-white mb-3">
-                  微循环 #{cycleNumber} · 各肌群有效组数 vs ACSM ≥10 组
+            <>
+              <div className={`rounded-2xl border p-3 ${theme.subCardBg}`}>
+                <div className="text-[12px] font-bold mb-2.5">
+                  微循环 #{cycleNumber} · 各肌群有效组数 vs ACSM 11–12 组
                 </div>
                 <VolumeBars groups={groups} />
               </div>
-              <div className="rounded-2xl bg-ink-800 border border-slate-700 p-4">
-                <div className="text-xs font-bold text-slate-300 mb-2">出勤热力图（本周期 Day 1–8）</div>
-                <AttendanceHeatmap logs={allLogs} user={user} cycleNumber={cycleNumber} />
+              <div className={`rounded-2xl border p-3 ${theme.subCardBg}`}>
+                <div className="text-[11px] font-bold opacity-80 mb-1.5">
+                  出勤热力图（本周期 Day 1–8）
+                </div>
+                <AttendanceHeatmap logs={logs || []} user={currentUser} cycleNumber={cycleNumber} />
               </div>
-            </div>
+            </>
           )}
 
           {tab === 'trend' && (
-            <div className="rounded-2xl bg-ink-800 border border-slate-700 p-4 space-y-3">
+            <div className={`rounded-2xl border p-3 space-y-2.5 ${theme.subCardBg}`}>
               <select
-                value={trendId}
+                value={effectiveTrendId}
                 onChange={(e) => setTrendId(e.target.value)}
-                className="w-full bg-ink-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
+                className={`w-full rounded-xl border px-2.5 py-2 text-[12px] bg-black/30 ${theme.repSliderBg}`}
               >
                 {trendOptions.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -226,21 +261,27 @@ export default function AnalyticsModal({ state, user, onClose, onToast }) {
                   </option>
                 ))}
               </select>
-              <div className="text-xs text-slate-400">e1RM 折线 + 单次总吨位柱（容量 = 重量 × 次数）</div>
-              <TrendChart series={trend} />
+              <div className="text-[10px] opacity-60">
+                e1RM 折线 + 单次总吨位柱（容量 = 重量 × 次数）
+              </div>
+              <TrendChart series={trend} theme={theme} />
               {trend.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-ink-900 rounded-lg py-2">
-                    <div className="text-[10px] text-slate-400">最新 e1RM</div>
-                    <div className="text-emerald-400 font-bold">{trend[trend.length - 1].e1rm}kg</div>
+                  <div className="bg-black/30 rounded-xl py-2">
+                    <div className="text-[10px] opacity-60">最新 e1RM</div>
+                    <div className="text-emerald-400 font-bold text-[13px]">
+                      {trend[trend.length - 1].e1rm}kg
+                    </div>
                   </div>
-                  <div className="bg-ink-900 rounded-lg py-2">
-                    <div className="text-[10px] text-slate-400">最新容量</div>
-                    <div className="text-sky-400 font-bold">{trend[trend.length - 1].volume}</div>
+                  <div className="bg-black/30 rounded-xl py-2">
+                    <div className="text-[10px] opacity-60">最新容量</div>
+                    <div className="text-sky-400 font-bold text-[13px]">
+                      {trend[trend.length - 1].volume}
+                    </div>
                   </div>
-                  <div className="bg-ink-900 rounded-lg py-2">
-                    <div className="text-[10px] text-slate-400">记录次数</div>
-                    <div className="text-white font-bold">{trend.length}</div>
+                  <div className="bg-black/30 rounded-xl py-2">
+                    <div className="text-[10px] opacity-60">记录次数</div>
+                    <div className="font-bold text-[13px]">{trend.length}</div>
                   </div>
                 </div>
               )}
@@ -248,92 +289,53 @@ export default function AnalyticsModal({ state, user, onClose, onToast }) {
           )}
 
           {tab === 'history' && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  value={filters.keyword}
-                  onChange={(e) => setFilters((f) => ({ ...f, keyword: e.target.value }))}
-                  placeholder="动作/器械关键词"
-                  className="bg-ink-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
-                />
-                <select
-                  value={filters.day}
-                  onChange={(e) => setFilters((f) => ({ ...f, day: e.target.value }))}
-                  className="bg-ink-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
-                >
-                  <option value="">全部 Day</option>
-                  {DAY_META.map((d) => (
-                    <option key={d.day} value={d.day}>
-                      Day {d.day} {d.emoji}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="date"
-                  value={filters.start}
-                  onChange={(e) => setFilters((f) => ({ ...f, start: e.target.value }))}
-                  className="bg-ink-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                />
-                <input
-                  type="date"
-                  value={filters.end}
-                  onChange={(e) => setFilters((f) => ({ ...f, end: e.target.value }))}
-                  className="bg-ink-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                />
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => setFilters((f) => ({ ...f, tag: '' }))}
-                  className={`px-2 py-1 rounded-full text-[10px] ${!filters.tag ? 'bg-indigo-600 text-white' : 'bg-ink-700 text-slate-400'}`}
-                >
-                  全部标签
-                </button>
-                {QUICK_TAGS.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setFilters((f) => ({ ...f, tag: f.tag === t ? '' : t }))}
-                    className={`px-2 py-1 rounded-full text-[10px] ${
-                      filters.tag === t ? 'bg-indigo-600 text-white' : 'bg-ink-700 text-slate-400'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-
-              <div className="space-y-2">
-                {filtered.length === 0 && (
-                  <p className="text-slate-400 text-xs py-6 text-center">没有匹配的记录</p>
-                )}
-                {filtered.map((log, i) => (
-                  <div key={i} className="rounded-2xl bg-ink-800 border border-slate-700 p-3">
-                    <div className="flex justify-between text-xs mb-1.5">
-                      <span className="font-bold text-white">
-                        {log.date} · Day {log.day}
-                      </span>
-                      <span className="text-slate-500">#{log.cycleNumber}</span>
-                    </div>
-                    <div className="space-y-1">
-                      {log.exercises?.map((ex, j) => (
-                        <div key={j} className="flex justify-between text-[11px] text-slate-300">
-                          <span className="truncate flex-1">
-                            {nameOf(ex.exerciseId)}
-                            {(ex.quickTags || []).map((t, k) => (
-                              <span key={k} className={`ml-1 px-1 rounded ${TAG_COLORS[k % 2]}`}>
-                                {t}
-                              </span>
-                            ))}
-                          </span>
-                          <span className="text-slate-400 shrink-0 ml-2">
-                            {ex.sets?.filter((s) => s.completed).length || 0} 组
-                            {ex.details?.avgHr ? ` · ${ex.details.avgHr}bpm` : ''}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+            <div className="space-y-2.5">
+              <input
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="按动作 / 标签关键词检索"
+                className={`w-full rounded-xl border px-2.5 py-2 text-[12px] bg-black/30 ${theme.repSliderBg}`}
+              />
+              {filtered.length === 0 && (
+                <p className="text-[11px] opacity-60 py-6 text-center">没有匹配的记录</p>
+              )}
+              {filtered.map((log) => (
+                <div key={log.logId || log.date} className={`rounded-2xl border p-2.5 ${theme.subCardBg}`}>
+                  <div className="flex justify-between text-[11px] mb-1.5">
+                    <span className="font-bold">
+                      {log.date} · Day {log.day}
+                    </span>
+                    <span className="opacity-60">#{log.cycleNumber}</span>
                   </div>
-                ))}
-              </div>
+                  <div className="space-y-1">
+                    {(log.exercises || []).map((ex, j) => (
+                      <div key={j} className="flex justify-between text-[11px] gap-2">
+                        <span className="truncate flex-1">
+                          {nameOf(ex.exerciseId, allPlanItems)}
+                          {(ex.quickTags || []).map((t, k) => (
+                            <span
+                              key={k}
+                              className={`ml-1 px-1 rounded ${
+                                QUICK_TAGS.includes(t)
+                                  ? 'bg-indigo-500/20 text-indigo-200'
+                                  : 'bg-emerald-500/20 text-emerald-200'
+                              }`}
+                            >
+                              {t}
+                            </span>
+                          ))}
+                        </span>
+                        <span className="opacity-60 shrink-0">
+                          {(ex.sets || []).filter((s) => s.completed).length} 组
+                        </span>
+                      </div>
+                    ))}
+                    {log.cardioSummary?.completed && (
+                      <CardioBadge cardio={log.cardioSummary} theme={theme} />
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

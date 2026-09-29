@@ -736,6 +736,9 @@ export const PLAN_LIBRARY = [
   },
 ]
 
+/** V2.5：统计与历史检索所需的全量动作清单（供 AnalyticsModal 使用） */
+export const ALL_EXERCISES = PLAN_LIBRARY
+
 /** 每天的元信息（Day 2 / 6 为有氧，7 / 8 为静息） */
 export const DAY_META = [
   { day: 1, type: 'strength', title: '下肢重装日', sub: '爆发力 + 股四头 + 伸髋后链', emoji: '🟢' },

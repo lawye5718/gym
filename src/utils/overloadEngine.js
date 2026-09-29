@@ -1,9 +1,9 @@
 /**
- * 渐进超负荷雷达 + Day 5 85% 自动配重引擎
- * 支持按场馆（newGym / oldGym / home）隔离预填与升级判定，避免跨馆串台。
+ * 三级预填与渐进超负荷引擎（V2.5）
+ * 融合：附随设置卡(customConfig) + 逐组真实递减次数继承 + 升级重算 + Day5 85% 折算 + 挂片计算
  */
 
-/** 按健身房器械最小步进取整（默认 2.5kg，小器械 1kg） */
+/** 按健身房器械最小步进取整 */
 export function roundToGymStep(weight, step = 2.5) {
   if (!weight || weight <= 0) return 0
   return Math.round(weight / step) * step
@@ -17,155 +17,182 @@ export function calculatePlatesPerSide(weightPerSide) {
   for (const p of plates) {
     const count = Math.floor((remaining + 0.01) / p)
     if (count > 0) {
-      result.push(`${p}kg×${count}`)
+      result.push(`${p}×${count}`)
       remaining = Number((remaining - count * p).toFixed(2))
     }
   }
-  return result.length ? `单边挂片: ${result.join(' + ')}` : '空杆/待配重'
+  return result.length ? `单边: ${result.join('+')}` : ''
 }
 
-/** 生成场馆隔离的唯一动作存储键，防止新馆挂片、旧馆插销、家庭哑铃配重互相污染 */
+/** 场馆隔离的唯一动作存储键，防止三馆配重互相污染 */
 export function getVenueExerciseKey(exerciseId, venueMode) {
   return `${exerciseId}__${venueMode}`
 }
 
-function findLastLogForExercise(exerciseId, venueMode, allLogs) {
-  for (const log of allLogs) {
-    if (venueMode && log.venueMode && log.venueMode !== venueMode) continue
-    const found = log.exercises?.find(
-      (e) => e.exerciseId === exerciseId && (!venueMode || !e.venueMode || e.venueMode === venueMode)
-    )
-    if (found && found.sets?.length > 0) return { ...found, date: log.date }
-  }
-  return null
-}
-
-function findLastDay5LogForSource(exerciseId, venueMode, allLogs) {
-  for (const log of allLogs) {
-    if (venueMode && log.venueMode && log.venueMode !== venueMode) continue
-    if (log.day === 5) {
-      const found = log.exercises?.find(
-        (e) => e.day5SourceId === exerciseId && (!venueMode || !e.venueMode || e.venueMode === venueMode)
-      )
-      if (found) return found
-    }
-  }
-  return null
-}
-
 /**
- * 获取今日某动作的「默认预填数据」与「渐进超负荷升级提醒」
- * @param {Object} exercisePlan 动作计划对象（含 id / category / prescription / day）
- * @param {String} venueMode    当前场馆 newGym | oldGym | home
- * @param {Array}  allLogs      历史日志数组（时间倒序）
+ * 智能处方生成器
+ * 数据带入优先级：
+ * 1. 附随设置卡锁定覆盖 或 无历史打卡 → 使用设置卡的重量与每组默认次数；
+ * 2. 有同场馆历史 → 逐组一对一精准带入上次真实重量与真实递减次数（如 22→15→12）；
+ * 3. Day 5（85% 扩次日）→ 取同场馆主日重量 85%，并继承上次 Day5 各组次数；
+ * 4. 达到/接近升级次数 → 生成升级提醒与「按新重量算」重置参数。
  */
-export function getSmartPrescription(exercisePlan, venueMode, allLogs) {
-  const { id, category, prescription, day } = exercisePlan
+export function getSmartPrescription(exercise, venueMode, allLogs, customConfig = null) {
+  const { id, category, prescription, day } = exercise
   const [minReps, maxReps] = prescription.repRange
-  const lastExerciseLog = findLastLogForExercise(id, venueMode, allLogs)
+  const scopedId = getVenueExerciseKey(id, venueMode)
 
-  // Day 5：按当前场馆主日 85% 自动折算
-  if (day === 5 && prescription.day5SourceId) {
-    const mainDayLog = findLastLogForExercise(prescription.day5SourceId, venueMode, allLogs)
-    if (mainDayLog && mainDayLog.sets.length > 0) {
-      const mainWeight = mainDayLog.sets[0].weight
-      const ratio = category === 'compound' ? 0.85 : 1.0
-      const step = mainWeight >= 20 ? 2.5 : 1
-      const targetWeight = roundToGymStep(mainWeight * ratio, step)
+  // 合并附随设置卡中的组数 / 重量 / 每组默认次数
+  const targetSetsCount = customConfig?.sets || prescription.sets
+  const baseDefaultWeight = customConfig?.defaultWeight ?? 0
+  const baseDefaultRepsList = customConfig?.defaultRepsList || []
+
+  const lastExerciseLog = findLastLog(scopedId, id, venueMode, allLogs)
+
+  // 设置卡更新时间晚于最近打卡 → 优先使用设置卡
+  const useCustomOverride =
+    customConfig?.updatedAt &&
+    (!lastExerciseLog?.updatedAt || customConfig.updatedAt > lastExerciseLog.updatedAt)
+
+  // ── Day 5（第二遍扩次日）85% 自动折算 ──
+  if (day === 5 && prescription.day5SourceId && !useCustomOverride) {
+    const scopedSourceId = getVenueExerciseKey(prescription.day5SourceId, venueMode)
+    const mainDayLog =
+      findLastLog(scopedSourceId, prescription.day5SourceId, venueMode, allLogs) ||
+      findLastLogAnyVenue(prescription.day5SourceId, allLogs)
+
+    const mainWeight = Number(mainDayLog?.sets?.[0]?.weight) || baseDefaultWeight || 0
+    const ratio = category === 'compound' ? 0.85 : 1.0
+    const step = mainWeight >= 20 ? 2.5 : 1
+    const targetDay5Weight = roundToGymStep(mainWeight * ratio, step)
+
+    const prefillSets = Array.from({ length: targetSetsCount }, (_, i) => {
+      const prevDay5Set = lastExerciseLog?.sets?.[i]
+      const weightChanged = prevDay5Set && Math.abs(Number(prevDay5Set.weight) - targetDay5Weight) >= 0.5
       return {
-        prefillSets: Array.from({ length: prescription.sets }, (_, i) => ({
-          setNo: i + 1,
-          weight: targetWeight,
-          reps: lastExerciseLog?.sets[i]?.reps || (category === 'compound' ? 14 : 15),
-          completed: false,
-        })),
-        overloadBanner:
-          category === 'compound'
-            ? {
-                type: 'day5_rep_push',
-                level: 'gold',
-                title: `⚡ 85% 扩次模式（主日 ${mainWeight}kg → 今日 ${targetWeight}kg）`,
-                message: `无需纠结 RIR！用 ${targetWeight}kg 每一组努力往上加次数，直到向心速度变慢即停（目标冲击 ${minReps}–${maxReps}+ 次）。`,
-              }
-            : {
-                type: 'day5_iso',
-                level: 'blue',
-                title: `🎯 原重量巩固（${targetWeight}kg × ${prescription.sets} 组）`,
-                message: '孤立动作不减重，照常推到速度变慢即停。',
-              },
+        setNo: i + 1,
+        weight: targetDay5Weight || Number(prevDay5Set?.weight) || baseDefaultWeight,
+        reps:
+          !weightChanged && prevDay5Set?.reps
+            ? Number(prevDay5Set.reps)
+            : baseDefaultRepsList[i] || (category === 'compound' ? Math.max(12, 15 - i) : Math.max(15, 18 - i)),
+        completed: false,
       }
+    })
+
+    return {
+      prefillSets,
+      lastWeight: Number(lastExerciseLog?.sets?.[0]?.weight) || targetDay5Weight,
+      overloadBanner: {
+        type: 'day5_rep_push',
+        level: 'info',
+        title:
+          category === 'compound'
+            ? `⚡ 85% 扩次模式（主日 ${mainWeight}kg → 今日 ${targetDay5Weight}kg）`
+            : `🎯 孤立原重巩固（${targetDay5Weight}kg × ${targetSetsCount}组）`,
+        message: '已带入各组目标次数，推到向心速度变慢即停！',
+      },
+      lastDate: lastExerciseLog?.date || mainDayLog?.date || null,
     }
   }
 
-  // 无历史：空白模板
-  if (!lastExerciseLog || !lastExerciseLog.sets.length) {
+  // ── 无历史 或 设置卡刚更新 ──
+  if (!lastExerciseLog || !lastExerciseLog.sets?.length || useCustomOverride) {
     return {
-      prefillSets: Array.from({ length: prescription.sets }, (_, i) => ({
+      prefillSets: Array.from({ length: targetSetsCount }, (_, i) => ({
         setNo: i + 1,
-        weight: 0,
-        reps: minReps,
+        weight: baseDefaultWeight,
+        reps: baseDefaultRepsList[i] ?? minReps,
         completed: false,
       })),
-      overloadBanner: null,
+      lastWeight: baseDefaultWeight,
+      overloadBanner: useCustomOverride
+        ? {
+            type: 'custom_applied',
+            level: 'emerald',
+            title: `⚙️ 已应用附随设置卡预设（${baseDefaultWeight}kg）`,
+            message: `各组默认次数：${Array.from(
+              { length: targetSetsCount },
+              (_, i) => baseDefaultRepsList[i] ?? minReps
+            ).join(' / ')} 次`,
+          }
+        : null,
+      lastDate: null,
     }
   }
 
-  // 常规主日：100% 继承当前场馆上次
-  const prefillSets = Array.from({ length: prescription.sets }, (_, i) => {
-    const prevSet = lastExerciseLog.sets[i] || lastExerciseLog.sets[lastExerciseLog.sets.length - 1]
-    return { setNo: i + 1, weight: prevSet.weight, reps: prevSet.reps, completed: false }
+  // ── 常规训练：逐组精准带入上次每组真实重量与递减次数 ──
+  const prefillSets = Array.from({ length: targetSetsCount }, (_, i) => {
+    const exactPrevSet = lastExerciseLog.sets[i]
+    const fallbackPrevSet = lastExerciseLog.sets[lastExerciseLog.sets.length - 1]
+    const sourceSet = exactPrevSet || fallbackPrevSet
+    return {
+      setNo: i + 1,
+      weight: Number(sourceSet?.weight) ?? baseDefaultWeight,
+      reps: Number(sourceSet?.reps) ?? baseDefaultRepsList[i] ?? minReps,
+      completed: false,
+    }
   })
 
+  // ── 渐进超负荷升级判定 ──
   const completedSets = lastExerciseLog.sets.filter((s) => s.completed !== false)
-  const topWeight = completedSets[0]?.weight || 0
+  const topWeight = Number(completedSets[0]?.weight) || baseDefaultWeight
+  const checkCount = Math.min(3, targetSetsCount)
   const allHitMax =
-    completedSets.length >= Math.min(3, prescription.sets) &&
-    completedSets.slice(0, 3).every((s) => s.reps >= maxReps)
-  const avgReps =
-    completedSets.reduce((sum, s) => sum + Number(s.reps), 0) / (completedSets.length || 1)
-
-  const lastDay5Log = findLastDay5LogForSource(id, venueMode, allLogs)
-  const day5Exploded = lastDay5Log && lastDay5Log.sets.some((s) => s.reps >= 16)
+    completedSets.length >= checkCount &&
+    completedSets.slice(0, checkCount).every((s) => Number(s.reps) >= maxReps)
+  const firstSetReps = Number(completedSets[0]?.reps) || 0
+  const step = topWeight >= 30 ? 2.5 : 1
+  const recommendedWeight = roundToGymStep(topWeight + step, step)
 
   let overloadBanner = null
-
-  if (category === 'compound') {
-    if (allHitMax || day5Exploded) {
-      const nextWeight = roundToGymStep(topWeight * 1.05, topWeight >= 40 ? 2.5 : 1)
-      overloadBanner = {
-        type: 'upgrade_ready',
-        level: 'gold',
-        title: `🚀 触发加重法则！建议今日升至 ${nextWeight}kg`,
-        message: allHitMax
-          ? `上次前 3 组已满 ${maxReps} 次上限！今日果断加重量 2.5–5%，次数退回 ${minReps} 次重新往上推。`
-          : `上次 Day 5（85% 重量）已突破 16 次！证明神经与肌力已超量恢复，今日主项可尝试加重至 ${nextWeight}kg。`,
-      }
-    } else if (avgReps >= maxReps - 1) {
-      overloadBanner = {
-        type: 'near_upgrade',
-        level: 'emerald',
-        title: '🔥 距离升级仅差临门一脚！',
-        message: `上次完成度极高（均次 ${avgReps.toFixed(1)} 次）。今日死守 ${topWeight}kg，争取前 3 组全部推满 ${maxReps} 次即可解锁下一档重量！`,
-      }
+  if (allHitMax || firstSetReps >= maxReps + 2) {
+    overloadBanner = {
+      type: 'upgrade_ready',
+      level: 'gold',
+      recommendedWeight,
+      resetReps: minReps,
+      title: `🚀 达到升级标准！建议升至 ${recommendedWeight}kg`,
+      message: `上次各组完成 [${completedSets.map((s) => s.reps).join(' / ')}] 次。点右侧「按新重量算」升重并将次数重置为 ${minReps} 次！`,
     }
-  } else if (category === 'isolation') {
-    if (allHitMax) {
-      overloadBanner = {
-        type: 'upgrade_ready',
-        level: 'gold',
-        title: `🏆 已磨满 ${maxReps} 次大关！可进阶下一档配重`,
-        message: `小肌群已完全适应 ${topWeight}kg × ${maxReps} 次。今日可下调一格插销（或 +1kg），次数退回 ${minReps} 次并严防耸肩代偿。`,
-      }
-    } else {
-      const targetNextRep = Math.min(maxReps, Math.round(avgReps) + 1)
-      overloadBanner = {
-        type: 'rep_progression',
-        level: 'blue',
-        title: `🎯 孤立扩次法则：保持 ${topWeight}kg，今日目标每组 ${targetNextRep} 次`,
-        message: '小肌群不轻易跳重！比上次多做 1 次（或多停顿半秒）就是最完美的渐进超负荷。',
-      }
+  } else if (firstSetReps >= maxReps - 1) {
+    overloadBanner = {
+      type: 'near_upgrade',
+      level: 'emerald',
+      recommendedWeight,
+      resetReps: minReps,
+      title: `🔥 接近升级线（上次：${completedSets.map((s) => s.reps).join(' / ')} 次）`,
+      message: `已原样带入上次各组次数，今日努力把后几组推满 ${maxReps} 次即可升级！`,
     }
   }
 
-  return { prefillSets, overloadBanner, lastDate: lastExerciseLog.date }
+  return {
+    prefillSets,
+    lastWeight: topWeight,
+    overloadBanner,
+    lastDate: lastExerciseLog.date,
+  }
+}
+
+/** 当前场馆下该动作最近一次打卡记录 */
+function findLastLog(scopedId, rawId, venueMode, allLogs) {
+  for (const log of allLogs) {
+    if (log.venueMode && log.venueMode !== venueMode) continue
+    const found = log.exercises?.find((e) => e.scopedId === scopedId || e.exerciseId === rawId)
+    if (found && found.sets?.length > 0) {
+      return { ...found, date: log.date, updatedAt: log.updatedAt || 0 }
+    }
+  }
+  return null
+}
+
+/** 跨场馆兜底查找（Day5 主日重量无同场馆记录时使用） */
+function findLastLogAnyVenue(rawId, allLogs) {
+  for (const log of allLogs) {
+    const found = log.exercises?.find((e) => e.exerciseId === rawId)
+    if (found && found.sets?.length > 0) {
+      return { ...found, date: log.date, updatedAt: log.updatedAt || 0 }
+    }
+  }
+  return null
 }

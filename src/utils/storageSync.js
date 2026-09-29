@@ -1,181 +1,285 @@
 /**
- * 本地优先（Local-First）存储层 + 云端同步预留 + 统计聚合
- * 云端接口：GET /api/sync  拉取全量；POST /api/sync 提交全量
- * 未配置 VITE_SYNC_API 时全部静默走本地，不影响离线使用。
+ * V2.5 本地存储层
+ * 场馆复合键隔离存储 + 附随设置持久化 + ACSM 周容量统计
+ *
+ * 升级兼容：首次加载若 V2.5 新键为空，自动从 V1.x 旧键（wava8day.state.v1）
+ * 迁移历史训练记录、机位记忆与周期信息，避免训练数据丢失。
  */
+import { getVenueExerciseKey } from './overloadEngine'
 
-import { PLAN_LIBRARY } from '../data/seedPlanData'
+const STORAGE_KEYS = {
+  LOGS: 'acsm2026_workout_logs_v25',
+  SEAT_MEMORY: 'acsm2026_seat_memory_v25',
+  CUSTOM_CONFIGS: 'acsm2026_custom_configs_v25',
+  CYCLE_META: 'acsm2026_cycle_meta_v25',
+}
 
-const LS_KEY = 'wava8day.state.v1'
-const SYNC_API = import.meta.env?.VITE_SYNC_API || ''
+/** V1.x 旧存储键（仅用于一次性迁移） */
+const LEGACY_KEY = 'wava8day.state.v1'
 
-const emptyState = () => ({
-  version: 1,
-  equipmentSettings: {},
-  workoutLogs: [],
-  cycleOffset: { leo: 0, linda: 0 },
-  restDaysInserted: { leo: 0, linda: 0 },
-  updatedAt: null,
-})
-
-export function loadState() {
+function readJSON(key, fallback) {
   try {
-    const raw = localStorage.getItem(LS_KEY)
-    if (!raw) return emptyState()
-    const parsed = JSON.parse(raw)
-    return { ...emptyState(), ...parsed }
+    const raw = localStorage.getItem(key)
+    if (!raw) return fallback
+    return JSON.parse(raw)
   } catch {
-    return emptyState()
+    return fallback
   }
 }
 
-export function saveState(state) {
-  const next = { ...state, updatedAt: new Date().toISOString() }
-  localStorage.setItem(LS_KEY, JSON.stringify(next))
-  // 云端同步：失败静默，保证健身房弱网可用
-  if (SYNC_API) pushToCloud(next)
+function writeJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* 存储写满时静默失败，不影响训练 */
+  }
+}
+
+const defaultCycleMeta = { cycleNumber: 1, extraRestDayInserted: false }
+
+export function loadAllState() {
+  const state = {
+    logs: readJSON(STORAGE_KEYS.LOGS, []),
+    seatMemory: readJSON(STORAGE_KEYS.SEAT_MEMORY, {}),
+    customConfigs: readJSON(STORAGE_KEYS.CUSTOM_CONFIGS, {}),
+    cycleMeta: { ...defaultCycleMeta, ...readJSON(STORAGE_KEYS.CYCLE_META, {}) },
+  }
+
+  // 升级迁移：新键无数据且存在旧键时，从 V1.x 迁移
+  if (!state.logs.length && !localStorage.getItem(STORAGE_KEYS.LOGS)) {
+    const legacy = readJSON(LEGACY_KEY, null)
+    if (legacy) {
+      const migrated = migrateLegacy(legacy)
+      writeJSON(STORAGE_KEYS.LOGS, migrated.logs)
+      writeJSON(STORAGE_KEYS.SEAT_MEMORY, migrated.seatMemory)
+      writeJSON(STORAGE_KEYS.CYCLE_META, migrated.cycleMeta)
+      return migrated
+    }
+  }
+  return state
+}
+
+/** 将 V1.x 整包 state 映射为 V2.5 结构 */
+function migrateLegacy(legacy) {
+  const logs = (legacy.workoutLogs || []).map((log) => {
+    const venue = log.venueMode || 'newGym'
+    return {
+      logId: `${log.date}_${log.user}_d${log.day}_${venue}`,
+      date: log.date,
+      updatedAt: Date.parse(log.date) || Date.now(),
+      user: log.user,
+      day: log.day,
+      venueMode: venue,
+      cycleNumber: Number(log.cycleNumber) || 1,
+      exercises: (log.exercises || []).map((ex) => ({
+        ...ex,
+        scopedId: ex.scopedId || getVenueExerciseKey(ex.exerciseId, venue),
+      })),
+    }
+  })
+
+  const seatMemory = {}
+  for (const [key, val] of Object.entries(legacy.equipmentSettings || {})) {
+    seatMemory[key] = typeof val === 'string' ? val : val?.text || ''
+  }
+
+  const cycleOffset = legacy.cycleOffset || {}
+  const restInserted = legacy.restDaysInserted || {}
+  const cycleMeta = {
+    cycleNumber: Math.max(Number(cycleOffset.leo || 0), Number(cycleOffset.linda || 0)) + 1,
+    extraRestDayInserted: Number(restInserted.leo || 0) > 0 || Number(restInserted.linda || 0) > 0,
+  }
+
+  return { logs, seatMemory, customConfigs: {}, cycleMeta }
+}
+
+/** 写入 / 更新某动作的组次打卡数据 */
+export function saveExerciseSessionLog({
+  user,
+  day,
+  venueMode,
+  cycleNumber,
+  exerciseId,
+  sets,
+  quickTags,
+}) {
+  const state = loadAllState()
+  const today = new Date().toISOString().slice(0, 10)
+  const logId = `${today}_${user}_d${day}_${venueMode}`
+  const scopedId = getVenueExerciseKey(exerciseId, venueMode)
+
+  let dayLog = state.logs.find((l) => l.logId === logId)
+  if (!dayLog) {
+    dayLog = {
+      logId,
+      date: today,
+      updatedAt: Date.now(),
+      user,
+      day,
+      venueMode,
+      cycleNumber,
+      exercises: [],
+    }
+    state.logs.unshift(dayLog)
+  } else {
+    dayLog.updatedAt = Date.now()
+  }
+
+  const exIdx = dayLog.exercises.findIndex((e) => e.scopedId === scopedId || e.exerciseId === exerciseId)
+  const payload = { exerciseId, scopedId, sets, quickTags, updatedAt: Date.now() }
+
+  if (exIdx >= 0) {
+    dayLog.exercises[exIdx] = payload
+  } else {
+    dayLog.exercises.push(payload)
+  }
+
+  writeJSON(STORAGE_KEYS.LOGS, state.logs)
+  return state.logs
+}
+
+/** 保存附随设置卡（器械默认重量 / 组数 / 每组默认次数 / 休息秒 / 机位记忆） */
+export function saveCustomExerciseConfig(exerciseId, venueMode, configObj) {
+  const state = loadAllState()
+  const key = getVenueExerciseKey(exerciseId, venueMode)
+  state.customConfigs[key] = { ...configObj, updatedAt: Date.now() }
+  writeJSON(STORAGE_KEYS.CUSTOM_CONFIGS, state.customConfigs)
+  return state.customConfigs
+}
+
+/** 一键重置为 ACSM 八天计划标准 */
+export function resetCustomExerciseConfig(exerciseId, venueMode) {
+  const state = loadAllState()
+  const key = getVenueExerciseKey(exerciseId, venueMode)
+  delete state.customConfigs[key]
+  writeJSON(STORAGE_KEYS.CUSTOM_CONFIGS, state.customConfigs)
+  return state.customConfigs
+}
+
+/** 机位记忆持久化 */
+export function saveSeatMemory(exerciseId, venueMode, text) {
+  const state = loadAllState()
+  const next = { ...state.seatMemory, [getVenueExerciseKey(exerciseId, venueMode)]: text }
+  writeJSON(STORAGE_KEYS.SEAT_MEMORY, next)
   return next
 }
 
-export function resetState() {
-  localStorage.removeItem(LS_KEY)
-  return emptyState()
+/** 周期元信息（当前第几个 8 天循环 / 是否已插入弹性静息日） */
+export function saveCycleMeta(meta) {
+  writeJSON(STORAGE_KEYS.CYCLE_META, meta)
+  return meta
 }
 
-/** ---------- 云端同步（预留） ---------- */
-export async function pullFromCloud() {
-  if (!SYNC_API) return null
-  try {
-    const res = await fetch(`${SYNC_API}?t=${Date.now()}`, { headers: { Accept: 'application/json' } })
-    if (!res.ok) return null
-    return await res.json()
-  } catch {
-    return null
+/**
+ * 统计当前 8 天微循环各重点肌群已完成有效组数
+ * 对标 ACSM 2026：每个重点肌群 11–12 组 / 8 天周期
+ */
+export function calculateACSMCycleVolume(logs, allPlanItems, user, cycleNumber) {
+  const groups = {
+    quads: { key: 'quads', label: '股四头肌 (前链)', sets: 0, target: 11 },
+    glutes_hams: { key: 'glutes_hams', label: '臀大肌与腘绳后链', sets: 0, target: 11 },
+    chest: { key: 'chest', label: '胸大肌', sets: 0, target: 11 },
+    back: { key: 'back', label: '背阔肌与上背', sets: 0, target: 12 },
+    shoulders: { key: 'shoulders', label: '三角肌 (直角肩)', sets: 0, target: 11 },
+    arms: { key: 'arms', label: '二头/三头 (含协同)', sets: 0, target: 10 },
+    calves: { key: 'calves', label: '小腿 / 提踵', sets: 0, target: 8 },
   }
-}
 
-export async function pushToCloud(state) {
-  if (!SYNC_API) return false
-  try {
-    const res = await fetch(SYNC_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
-}
+  const userCycleLogs = logs.filter(
+    (l) => l.user === user && (l.cycleNumber === cycleNumber || !cycleNumber)
+  )
 
-/** ---------- 备份导出 / 导入 ---------- */
-export function exportBackup(state) {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `wava8day-backup-${new Date().toISOString().slice(0, 10)}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-export function importBackup(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      try {
-        resolve({ ...emptyState(), ...JSON.parse(reader.result) })
-      } catch (e) {
-        reject(e)
+  for (const log of userCycleLogs) {
+    for (const ex of log.exercises || []) {
+      const plan = allPlanItems.find((p) => p.id === ex.exerciseId)
+      // 爆发力热身与肩袖热身不计入有效容量
+      if (!plan || plan.category === 'power' || plan.category === 'warmup') continue
+      const doneCount = (ex.sets || []).filter((s) => s.completed).length
+      if (groups[plan.muscleGroup]) {
+        groups[plan.muscleGroup].sets += doneCount
+      }
+      // 复合推拉动作对二头/三头计 0.5 倍协同有效组
+      if (
+        plan.category === 'compound' &&
+        (plan.muscleGroup === 'chest' || plan.muscleGroup === 'back')
+      ) {
+        groups.arms.sets = Number((groups.arms.sets + doneCount * 0.5).toFixed(1))
       }
     }
-    reader.onerror = reject
-    reader.readAsText(file)
-  })
-}
-
-/** 机位记忆的场馆隔离复合键（exerciseId + venueMode） */
-export function equipmentKey(exerciseId, venueMode) {
-  return `${exerciseId}__${venueMode}`
-}
-
-/** ---------- 日志读写 ---------- */
-export function upsertDayLog(state, log) {
-  const venueMode = log.venueMode || 'newGym'
-  const logs = (state.workoutLogs || []).filter(
-    (l) =>
-      !(
-        l.user === log.user &&
-        l.day === log.day &&
-        l.date === log.date &&
-        l.cycleNumber === log.cycleNumber &&
-        (l.venueMode || 'newGym') === venueMode
-      )
-  )
-  return { ...state, workoutLogs: [log, ...logs] }
-}
-
-export function saveEquipment(state, key, text) {
-  return {
-    ...state,
-    equipmentSettings: {
-      ...(state.equipmentSettings || {}),
-      [key]: { text, updatedAt: new Date().toISOString().slice(0, 10) },
-    },
   }
+
+  return Object.values(groups)
 }
 
-/** ---------- 检索与统计 ---------- */
+/** 历史战报检索（按用户 / 关键字 / 场馆） */
 export function queryWorkoutLogs(logs, filters = {}) {
+  const { user, keyword, venueMode } = filters
   return logs.filter((log) => {
-    if (filters.user && log.user !== filters.user) return false
-    if (filters.day && log.day !== Number(filters.day)) return false
-    if (filters.startDate && log.date < filters.startDate) return false
-    if (filters.endDate && log.date > filters.endDate) return false
-    if (filters.keyword || filters.tag) {
-      const kw = (filters.keyword || '').toLowerCase()
-      const matchExercise = log.exercises?.some((ex) => {
-        const planName = PLAN_LIBRARY.find((p) => p.id === ex.exerciseId)?.variants?.newGym?.name || ''
-        const nameMatch =
-          !kw ||
-          ex.exerciseId.toLowerCase().includes(kw) ||
-          planName.toLowerCase().includes(kw) ||
-          (ex.note || '').toLowerCase().includes(kw)
-        const tagMatch = !filters.tag || ex.quickTags?.includes(filters.tag)
-        return nameMatch && tagMatch
-      })
-      if (!matchExercise) return false
+    if (user && log.user !== user) return false
+    if (venueMode && log.venueMode !== venueMode) return false
+    if (keyword) {
+      const kw = keyword.toLowerCase()
+      const hit = (log.exercises || []).some(
+        (ex) =>
+          (ex.exerciseId || '').toLowerCase().includes(kw) ||
+          (ex.quickTags || []).some((t) => t.toLowerCase().includes(kw))
+      )
+      if (!hit) return false
     }
     return true
   })
 }
 
-const TARGET_GROUPS = {
-  quads: { label: '股四头/下肢前链', sets: 0, target: 10 },
-  glutes_hams: { label: '臀大肌/腘绳后链', sets: 0, target: 10 },
-  chest: { label: '胸大肌', sets: 0, target: 10 },
-  back: { label: '背阔肌/上背', sets: 0, target: 12 },
-  shoulders: { label: '三角肌(前/中/后)', sets: 0, target: 10 },
-  arms: { label: '二头/三头肌', sets: 0, target: 8 },
-  calves: { label: '小腿/提踵', sets: 0, target: 8 },
-}
+/**
+ * 保存 Day 2 (Zone 2)、Day 6 (4x4 HIIT) 或 Day 7/8 (静息恢复) 打卡记录
+ * 结果写入当日 log 的 cardioSummary 字段，供历史战报展示
+ * @param {Object} payload { user, day, venueMode, cycleNumber, cardioData }
+ * cardioData 示例:
+ *  - Day 2:  { type: 'zone2', durationMinutes: 35, avgHeartRate: 122, tags: ['👃全程鼻呼吸轻松'] }
+ *  - Day 6:  { type: 'hiit_4x4', roundsCompleted: 4, peakHeartRate: 168, recoveryHeartRate: 115, tags: ['⚡双腿轻盈正常'] }
+ *  - Day 7/8:{ type: 'rest', cnsStatus: '中枢神经满电', tags: [], advanceCycle: true }
+ */
+export function saveCardioOrRestLog({ user, day, venueMode, cycleNumber, cardioData }) {
+  const state = loadAllState()
+  const today = new Date().toISOString().slice(0, 10)
+  const logId = `${today}_${user}_d${day}_${venueMode}`
 
-/** 当前微循环各肌群有效组数 vs ACSM 2026 基准 */
-export function calculateCycleMuscleVolume(logs, planLibrary, user, cycleNumber) {
-  const groups = JSON.parse(JSON.stringify(TARGET_GROUPS))
-  const cycleLogs = logs.filter((l) => l.user === user && Number(l.cycleNumber || 1) === Number(cycleNumber))
-  for (const log of cycleLogs) {
-    for (const ex of log.exercises || []) {
-      const planItem = planLibrary.find((p) => p.id === ex.exerciseId)
-      if (!planItem || planItem.category === 'power' || planItem.category === 'warmup') continue
-      const completedCount = (ex.sets || []).filter((s) => s.completed).length
-      if (groups[planItem.muscleGroup]) groups[planItem.muscleGroup].sets += completedCount
+  let dayLog = state.logs.find((l) => l.logId === logId)
+  if (!dayLog) {
+    dayLog = {
+      logId,
+      date: today,
+      updatedAt: Date.now(),
+      user,
+      day,
+      venueMode,
+      cycleNumber,
+      exercises: [],
+      cardioSummary: null,
     }
+    state.logs.unshift(dayLog)
+  } else {
+    dayLog.updatedAt = Date.now()
   }
-  return Object.entries(groups).map(([key, v]) => ({ key, ...v }))
+
+  dayLog.cardioSummary = {
+    ...cardioData,
+    completed: true,
+    savedAt: new Date().toTimeString().slice(0, 5),
+  }
+
+  // Day 8 勾选「开启下一轮微循环」→ 周期 +1 并重置弹性休息日开关
+  if (cardioData.advanceCycle) {
+    state.cycleMeta.cycleNumber = (Number(state.cycleMeta.cycleNumber) || 1) + 1
+    state.cycleMeta.extraRestDayInserted = false
+    writeJSON(STORAGE_KEYS.CYCLE_META, state.cycleMeta)
+  }
+
+  writeJSON(STORAGE_KEYS.LOGS, state.logs)
+  return { logs: state.logs, cycleMeta: state.cycleMeta }
 }
 
-/** 主项力量/容量趋势（e1RM 与总吨位） */
+/** 主项力量 / 容量趋势（e1RM 与单次总吨位） */
 export function buildTrendSeries(logs, user, exerciseId) {
   const series = []
   const sorted = [...logs]
@@ -198,4 +302,22 @@ export function buildTrendSeries(logs, user, exerciseId) {
     })
   }
   return series
+}
+
+/** 备份导出 */
+export function exportBackup() {
+  const state = loadAllState()
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `gym-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** 清空全部本地数据 */
+export function resetAllState() {
+  Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k))
+  return loadAllState()
 }

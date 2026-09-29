@@ -1,48 +1,55 @@
-import { ShieldPlus } from 'lucide-react'
-import { DAY_META } from '../data/seedPlanData'
+/**
+ * V2.5 Day 1~8 胶囊导航 + Day5 后「+1 弹性静息日」开关
+ */
+export default function DaySwiper({
+  currentDay,
+  dayMeta,
+  theme,
+  extraRestInserted,
+  onSelectDay,
+  onToggleExtraRest,
+}) {
+  const today = dayMeta.find((d) => d.day === currentDay)
 
-/** Day 1–8 进度胶囊导航 + 弹性 +1 静息日按钮 */
-export default function DaySwiper({ currentDay, setCurrentDay, restInserted, onToggleRest }) {
   return (
-    <div className="bg-ink-900/95 border-b border-slate-800">
-      <div className="px-3 py-2.5">
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-          {DAY_META.map((m) => {
-            const active = currentDay === m.day
-            return (
-              <button
-                key={m.day}
-                onClick={() => setCurrentDay(m.day)}
-                className={`shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-bold transition border ${
-                  active
-                    ? 'bg-slate-100 text-ink-900 border-slate-100'
-                    : 'bg-ink-700 text-slate-400 border-slate-700'
-                }`}
-                title={`${m.title} · ${m.sub}`}
-              >
-                <span className="mr-1">{m.emoji}</span>D{m.day}
-              </button>
-            )
-          })}
-        </div>
+    <div className="shrink-0 px-3 py-1.5">
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+        {(dayMeta || []).map((d) => {
+          const active = currentDay === d.day
+          return (
+            <button
+              key={d.day}
+              type="button"
+              onClick={() => onSelectDay(d.day)}
+              className={`shrink-0 min-w-[3.4rem] px-2 py-1 rounded-xl border text-[11px] font-bold transition ${
+                active ? `bg-gradient-to-r ${theme.accentPrimary}` : `${theme.subCardBg} opacity-70`
+              }`}
+            >
+              <div className="flex items-center justify-center gap-0.5">
+                <span>{d.emoji}</span>
+                <span>D{d.day}</span>
+              </div>
+              <div className="text-[9px] opacity-80 truncate max-w-[4rem]">{d.title}</div>
+            </button>
+          )
+        })}
+      </div>
 
-        {/* Day 5 与 Day 6 之间的弹性阀 */}
-        <div className="mt-2 flex items-center gap-2">
-          <button
-            onClick={onToggleRest}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold border transition ${
-              restInserted
-                ? 'bg-emerald-500/20 text-emerald-200 border-emerald-500/40'
-                : 'bg-ink-700 text-slate-400 border-slate-700'
-            }`}
-          >
-            <ShieldPlus size={13} />
-            {restInserted ? '已插入 +1 弹性静息日 ✓' : '🛡️ 插入 +1 弹性静息日'}
-          </button>
-          <span className="text-[10px] text-slate-500 leading-tight flex-1">
-            {restInserted ? '本周期顺延为 9 天' : 'Day5 后腿沉/睡差可插入'}
-          </span>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <div className="text-[10px] opacity-70 truncate">
+          {today ? `${today.title} · ${today.sub}` : ''}
         </div>
+        <button
+          type="button"
+          onClick={onToggleExtraRest}
+          className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border transition ${
+            extraRestInserted
+              ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+              : `${theme.subCardBg} opacity-70`
+          }`}
+        >
+          {extraRestInserted ? '✅ 已加 +1 静息日' : '＋ 弹性静息日'}
+        </button>
       </div>
     </div>
   )
