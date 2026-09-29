@@ -12,6 +12,10 @@ const STORAGE_KEYS = {
   SEAT_MEMORY: 'acsm2026_seat_memory_v25',
   CUSTOM_CONFIGS: 'acsm2026_custom_configs_v25',
   CYCLE_META: 'acsm2026_cycle_meta_v25',
+  // V2.6 新增
+  AVATARS: 'acsm2026_custom_avatars_v26',
+  CUSTOM_PLAN: 'acsm2026_custom_plan_v26',
+  UPGRADE_ACK: 'acsm2026_upgrade_ack_v26',
 }
 
 /** V1.x 旧存储键（仅用于一次性迁移） */
@@ -43,6 +47,10 @@ export function loadAllState() {
     seatMemory: readJSON(STORAGE_KEYS.SEAT_MEMORY, {}),
     customConfigs: readJSON(STORAGE_KEYS.CUSTOM_CONFIGS, {}),
     cycleMeta: { ...defaultCycleMeta, ...readJSON(STORAGE_KEYS.CYCLE_META, {}) },
+    // V2.6：自定义头像（256×256 压缩 DataURL）、自定义训练计划、升级确认指纹锁
+    customAvatars: readJSON(STORAGE_KEYS.AVATARS, {}),
+    customPlan: readJSON(STORAGE_KEYS.CUSTOM_PLAN, null),
+    upgradeAckMap: readJSON(STORAGE_KEYS.UPGRADE_ACK, {}),
   }
 
   // 升级迁移：新键无数据且存在旧键时，从 V1.x 迁移
@@ -90,7 +98,15 @@ function migrateLegacy(legacy) {
     extraRestDayInserted: Number(restInserted.leo || 0) > 0 || Number(restInserted.linda || 0) > 0,
   }
 
-  return { logs, seatMemory, customConfigs: {}, cycleMeta }
+  return {
+    logs,
+    seatMemory,
+    customConfigs: {},
+    cycleMeta,
+    customAvatars: {},
+    customPlan: null,
+    upgradeAckMap: {},
+  }
 }
 
 /** 写入 / 更新某动作的组次打卡数据 */
@@ -320,4 +336,75 @@ export function exportBackup() {
 export function resetAllState() {
   Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k))
   return loadAllState()
+}
+
+/* ---------- V2.6 自定义头像 ---------- */
+
+/** 保存自定义头像（已由 Canvas 压缩为 256×256 JPEG DataURL，约 20–35KB） */
+export function saveCustomAvatar(userKey, dataUrl) {
+  const state = loadAllState()
+  const next = { ...(state.customAvatars || {}), [userKey]: dataUrl }
+  writeJSON(STORAGE_KEYS.AVATARS, next)
+  return next
+}
+
+/** 恢复默认头像 */
+export function resetCustomAvatar(userKey) {
+  const state = loadAllState()
+  const next = { ...(state.customAvatars || {}) }
+  delete next[userKey]
+  writeJSON(STORAGE_KEYS.AVATARS, next)
+  return next
+}
+
+/* ---------- V2.6 自定义训练计划 ---------- */
+
+/**
+ * 导入 AI 生成的训练计划 JSON
+ * - mode=full：全量替换
+ * - mode=patch：仅替换 targetUsers + targetDays 命中的动作，其余天数保留内置计划
+ * @returns {{updatedCount: number, plan: Array}}
+ */
+export function importCustomPlan(parsed) {
+  const state = loadAllState()
+  const incoming = Array.isArray(parsed?.exercises) ? parsed.exercises : []
+  let nextPlan
+
+  if (parsed?.mode === 'full') {
+    nextPlan = incoming
+  } else {
+    const users = Array.isArray(parsed?.targetUsers) ? parsed.targetUsers : []
+    const days = Array.isArray(parsed?.targetDays) ? parsed.targetDays : []
+    const base = Array.isArray(state.customPlan) ? state.customPlan : []
+    // 剔除将被覆盖的 user+day 旧条目，再合并新条目（customPlan 只保存「被自定义覆盖的动作」）
+    const kept = base.filter((item) => {
+      const userMatch = users.length === 0 || users.includes(item.user)
+      const dayMatch = days.length === 0 || days.includes(Number(item.day))
+      return !(userMatch && dayMatch)
+    })
+    nextPlan = [...kept, ...incoming]
+  }
+
+  writeJSON(STORAGE_KEYS.CUSTOM_PLAN, nextPlan)
+  return { updatedCount: incoming.length, plan: nextPlan }
+}
+
+/** 恢复内置 ACSM 2026 默认计划 */
+export function resetCustomPlan() {
+  writeJSON(STORAGE_KEYS.CUSTOM_PLAN, null)
+  return null
+}
+
+/* ---------- V2.6 升级确认指纹锁 ---------- */
+
+/**
+ * 记录升级提醒的处理结果，避免同一达标记录反复弹窗打扰
+ * @param {string} ackKey `${exerciseId}__${venueMode}__${lastLogDate}__${lastTopWeight}`
+ * @param {'accepted'|'dismissed'} decision
+ */
+export function saveUpgradeAck(ackKey, decision) {
+  const state = loadAllState()
+  const next = { ...(state.upgradeAckMap || {}), [ackKey]: decision }
+  writeJSON(STORAGE_KEYS.UPGRADE_ACK, next)
+  return next
 }

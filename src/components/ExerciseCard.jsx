@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Check, Ruler, Settings } from 'lucide-react'
 import SwipeNumberControl from './SwipeNumberControl'
 import GiantRestBar from './GiantRestBar'
 import AttachedSettingsCard from './AttachedSettingsCard'
 import ActionCueFlashCard from './ActionCueFlashCard'
 import { calculatePlatesPerSide } from '../utils/overloadEngine'
-import { playTripleChime, releaseWakeLock, requestWakeLock, vibrate } from '../utils/soundAndWakeLock'
 
 const QUICK_TAGS = [
   '⚡1.5s减速停(RIR2)',
@@ -16,8 +15,11 @@ const QUICK_TAGS = [
 ]
 
 /**
- * V2.5 单屏动作分组状态主卡
- * 集成：正交手势(↕翻牌 / ↔调次数)、⚙️设置翻转、📐要领闪出、底部巨型休息大键
+ * V2.6 单屏动作分组状态主卡
+ * 关键修复：
+ * - ⚙️设置 / 📐要领 以「覆盖层」呈现，主卡与 GiantRestBar 常驻挂载，倒计时绝不中断重置
+ * - 移除卡片内部的上下翻牌与左右滑改次数监听，全站手势统一由 App.jsx 管理（杜绝双重触发跳卡）
+ * - 升级提醒引入 upgradeAckMap 指纹锁：一次确认或忽略后不再反复打扰
  */
 export default function ExerciseCard({
   exercise,
@@ -28,11 +30,13 @@ export default function ExerciseCard({
   theme,
   cardIndex,
   totalExerciseCards,
+  upgradeAckMap,
+  onRestStateChange,
   onSaveSeatMemory,
   onSaveCustomConfig,
   onResetToACSMPlan,
   onUpdateSetData,
-  onFlipCard,
+  onSaveUpgradeAck,
 }) {
   const variant = exercise.variants?.[venueMode] || exercise.variants?.newGym
   const { prescription, tempoGuide } = exercise
@@ -44,44 +48,14 @@ export default function ExerciseCard({
   const [showSettings, setShowSettings] = useState(false)
   const [showCue, setShowCue] = useState(false)
   const [activeSetIdx, setActiveSetIdx] = useState(0)
+  const [restResetToken, setRestResetToken] = useState(0)
 
-  const [resting, setResting] = useState(false)
-  const [remaining, setRemaining] = useState(0)
-  const [restTotal, setRestTotal] = useState(0)
-
-  // 设置卡更新 / 切换动作后，重新带入预填数据
+  // 设置卡更新 / 切换动作后重新带入预填
   useEffect(() => {
     setSets(smartData?.prefillSets || [])
     setActiveSetIdx(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customConfig?.updatedAt, exercise.id])
-
-  // 组间休息倒计时：结束响铃 + 震动；保持 4 秒「已完成」高亮后复位
-  useEffect(() => {
-    if (!resting) return
-    if (remaining <= 0) {
-      playTripleChime()
-      vibrate([80, 60, 80, 60, 140])
-      releaseWakeLock()
-      const t = setTimeout(() => setResting(false), 4000)
-      return () => clearTimeout(t)
-    }
-    const t = setTimeout(() => setRemaining((r) => r - 1), 1000)
-    return () => clearTimeout(t)
-  }, [resting, remaining])
-
-  const startRest = (sec) => {
-    setRestTotal(sec)
-    setRemaining(sec)
-    setResting(true)
-    requestWakeLock()
-  }
-
-  const skipRest = () => {
-    setResting(false)
-    setRemaining(0)
-    releaseWakeLock()
-  }
 
   const commit = (nextSets, tags = selectedTags) => {
     setSets(nextSets)
@@ -93,16 +67,6 @@ export default function ExerciseCard({
     commit(next)
   }
 
-  const toggleSetDone = (idx) => {
-    const wasCompleted = sets[idx]?.completed
-    const next = sets.map((s, i) => (i === idx ? { ...s, completed: !s.completed } : s))
-    commit(next)
-    if (!wasCompleted) {
-      setActiveSetIdx(Math.min(idx + 1, sets.length - 1))
-      startRest(restSeconds)
-    }
-  }
-
   const toggleTag = (tag) => {
     const next = selectedTags.includes(tag)
       ? selectedTags.filter((t) => t !== tag)
@@ -111,9 +75,53 @@ export default function ExerciseCard({
     onUpdateSetData?.(exercise.id, sets, next)
   }
 
-  /** 按新重量算：当前组及后续组升重，次数重置为起步下限 */
-  const applyUpgrade = () => {
-    const banner = smartData?.overloadBanner
+  const firstIncompleteIdx = sets.findIndex((s) => !s.completed)
+  const allCompleted = sets.length > 0 && sets.every((s) => s.completed)
+  const activeSetNo = (firstIncompleteIdx >= 0 ? firstIncompleteIdx : Math.max(0, sets.length - 1)) + 1
+
+  /** 巨型大键点击：标记当前组完成（休息计时由 GiantRestBar 接管） */
+  const handleStartSetComplete = () => {
+    const idx = firstIncompleteIdx >= 0 ? firstIncompleteIdx : activeSetIdx
+    if (idx < 0 || !sets[idx]) return
+    const next = sets.map((s, i) => (i === idx ? { ...s, completed: true } : s))
+    commit(next)
+  }
+
+  /** 休息自然结束或跳过：自动把焦点推进到下一个未完成组 */
+  const handleAutoNext = () => {
+    const idx = sets.findIndex((s) => !s.completed)
+    if (idx >= 0) setActiveSetIdx(idx)
+  }
+
+  /** 撤销误点的最后一组，并停止误触的倒计时 */
+  const handleUndoLastSet = () => {
+    let last = -1
+    sets.forEach((s, i) => {
+      if (s.completed) last = i
+    })
+    if (last < 0) return
+    const next = sets.map((s, i) => (i === last ? { ...s, completed: false } : s))
+    commit(next)
+    setActiveSetIdx(last)
+    setRestResetToken((t) => t + 1) // 强制 GiantRestBar 重置，停止计时
+  }
+
+  /** 手动切换某组完成状态（误触容错） */
+  const toggleSetDone = (idx) => {
+    const next = sets.map((s, i) => (i === idx ? { ...s, completed: !s.completed } : s))
+    commit(next)
+    if (sets[idx]?.completed) setRestResetToken((t) => t + 1) // 取消完成则停止计时
+  }
+
+  // 升级提醒指纹锁：同一达标记录确认或忽略后不再重复弹窗
+  const banner = smartData?.overloadBanner
+  const ackKey = `${exercise.id}__${venueMode}__${smartData?.lastDate || 'none'}__${
+    smartData?.lastWeight || 0
+  }`
+  const acked = upgradeAckMap?.[ackKey]
+  const showBanner = banner && !acked
+
+  const handleAcceptUpgrade = () => {
     if (!banner?.recommendedWeight) return
     const next = sets.map((s, i) =>
       i >= activeSetIdx
@@ -121,73 +129,23 @@ export default function ExerciseCard({
         : s
     )
     commit(next)
-    vibrate([30])
+    onSaveUpgradeAck?.(ackKey, 'accepted')
   }
 
-  // 卡片正交手势：↕ 翻牌 / ↔ 调当前组次数（左滑+ 右滑-）
-  const touchRef = useRef({ x: 0, y: 0 })
-  const inListRef = useRef(false)
-
-  const handleTouchStart = (e) => {
-    touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  const handleDismissUpgrade = () => {
+    onSaveUpgradeAck?.(ackKey, 'dismissed')
   }
 
-  const handleTouchEnd = (e) => {
-    const dx = e.changedTouches[0].clientX - touchRef.current.x
-    const dy = e.changedTouches[0].clientY - touchRef.current.y
-    const insideList = inListRef.current
-    inListRef.current = false
-    if (insideList) return // 列表内优先滚动
-    if (Math.abs(dy) > 45 && Math.abs(dy) > Math.abs(dx) * 1.2) {
-      onFlipCard?.(dy < 0 ? 'next' : 'prev')
-    } else if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      const delta = dx < 0 ? 1 : -1
-      const cur = sets[activeSetIdx]
-      if (cur) handleFieldChange(activeSetIdx, 'reps', Math.max(1, Number(cur.reps) + delta))
-    }
-  }
+  const isOverlayOpen = showSettings || showCue
 
-  const banner = smartData?.overloadBanner
-
-  // ── 设置背卡 ──
-  if (showSettings) {
-    return (
-      <div className="h-full min-h-0" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-        <AttachedSettingsCard
-          exercise={exercise}
-          venueMode={venueMode}
-          customConfig={customConfig}
-          theme={theme}
-          onSave={(cfg) => {
-            onSaveCustomConfig?.(exercise.id, venueMode, cfg)
-            if (cfg.seatNote) onSaveSeatMemory?.(exercise.id, cfg.seatNote)
-            setShowSettings(false)
-          }}
-          onReset={() => {
-            onResetToACSMPlan?.(exercise.id, venueMode)
-            setShowSettings(false)
-          }}
-          onBack={() => setShowSettings(false)}
-        />
-      </div>
-    )
-  }
-
-  // ── 主卡 ──
   return (
-    <div
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      className={`flex flex-col h-full min-h-0 rounded-3xl border ${theme.cardBg}`}
-    >
-      {/* 头部 + 手势提示 + 升级横幅 */}
+    <div className={`relative flex flex-col h-full min-h-0 rounded-3xl border ${theme.cardBg}`}>
+      {/* 头部 + 牌序 + 升级横幅 */}
       <div className="shrink-0 px-3 pt-2.5 pb-1.5">
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <span
-                className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${theme.accentBadge}`}
-              >
+              <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${theme.accentBadge}`}>
                 {exercise.order}
               </span>
               <span className="text-[10px] opacity-70 truncate">{variant?.machineCode}</span>
@@ -224,7 +182,6 @@ export default function ExerciseCard({
           </div>
         </div>
 
-        {/* 节奏摘要（点击闪出要领卡） */}
         <button
           type="button"
           onClick={() => setShowCue(true)}
@@ -239,10 +196,10 @@ export default function ExerciseCard({
           <span>
             动作 {cardIndex + 1} / {totalExerciseCards}
           </span>
-          <span>↕滑翻牌 · ↔滑调次数</span>
+          <span>↕ 滑动翻牌（由主舞台统一处理）</span>
         </div>
 
-        {banner && (
+        {showBanner && (
           <div
             className={`mt-1.5 rounded-xl border px-2.5 py-2 text-[11px] ${
               banner.level === 'gold'
@@ -255,31 +212,34 @@ export default function ExerciseCard({
             <div className="font-bold text-[12px]">{banner.title}</div>
             <div className="opacity-90 leading-snug mt-0.5">{banner.message}</div>
             {banner.recommendedWeight && (
-              <button
-                type="button"
-                onClick={applyUpgrade}
-                className={`mt-1.5 px-2 py-1 rounded-lg text-[11px] font-bold bg-gradient-to-r ${theme.accentPrimary}`}
-              >
-                按新重量算（{banner.recommendedWeight}kg · {banner.resetReps ?? minReps} 次）
-              </button>
+              <div className="flex gap-2 mt-1.5">
+                <button
+                  type="button"
+                  onClick={handleAcceptUpgrade}
+                  className={`flex-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-gradient-to-r ${theme.accentPrimary}`}
+                >
+                  ✅ 确认升至 {banner.recommendedWeight}kg
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDismissUpgrade}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/10"
+                >
+                  ✋ 暂不升级
+                </button>
+              </div>
             )}
           </div>
         )}
       </div>
 
-      {/* 各组打卡（可滚动） */}
-      <div
-        onTouchStart={() => {
-          inListRef.current = true
-        }}
-        className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-3 space-y-1.5"
-      >
+      {/* 各组打卡 */}
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-3 space-y-1.5">
         {sets.map((s, idx) => {
-          const isActive = idx === activeSetIdx
+          const isActive = idx === (firstIncompleteIdx >= 0 ? firstIncompleteIdx : activeSetIdx)
           return (
             <div
               key={s.setNo ?? idx}
-              onClick={() => setActiveSetIdx(idx)}
               className={`flex items-center gap-1.5 rounded-xl border px-1.5 py-1.5 transition ${
                 s.completed
                   ? theme.doneRowBg
@@ -298,7 +258,6 @@ export default function ExerciseCard({
                 step={variant?.isPlateLoaded ? 2.5 : 1}
                 min={0}
                 max={300}
-                decimals={1}
                 unit="kg"
                 theme={theme}
                 className="flex-1"
@@ -312,20 +271,19 @@ export default function ExerciseCard({
                 max={60}
                 unit="次"
                 theme={theme}
+                highlightColor="text-emerald-400"
                 className="flex-1"
               />
 
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  toggleSetDone(idx)
-                }}
+                onClick={() => toggleSetDone(idx)}
                 className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center font-bold transition ${
                   s.completed
                     ? `bg-gradient-to-r ${theme.doneBtn}`
                     : 'bg-black/30 border border-white/10'
                 }`}
+                title={s.completed ? '点击可撤销本组' : '标记完成'}
               >
                 <Check size={15} strokeWidth={3} />
               </button>
@@ -360,20 +318,50 @@ export default function ExerciseCard({
         <div className="shrink-0 px-3 pt-1 text-[10px] opacity-70 truncate">💺 {seatMemory}</div>
       )}
 
-      {/* 巨型休息大键 */}
+      {/* 巨型休息横条（常驻挂载，切换设置卡/要领卡时不会卸载） */}
       <div className="shrink-0 p-3 pt-2">
         <GiantRestBar
-          resting={resting}
-          remaining={remaining}
-          total={restTotal}
+          key={restResetToken}
+          activeSetNo={activeSetNo}
+          totalSets={sets.length || prescription.sets}
+          allSetsCompleted={allCompleted}
+          restDurationSeconds={restSeconds}
+          isOverlayOpen={isOverlayOpen}
           theme={theme}
-          onStart={() => startRest(restSeconds)}
-          onSkip={skipRest}
-          label={`👆 完成第 ${activeSetIdx + 1} 组并开始休息 ${restSeconds}s`}
+          onStartSetComplete={handleStartSetComplete}
+          onRestFinishedAutoNext={handleAutoNext}
+          onUndoLastSet={handleUndoLastSet}
+          onReturnToWorkoutFace={() => {
+            setShowSettings(false)
+            setShowCue(false)
+          }}
+          onRestStateChange={onRestStateChange}
         />
       </div>
 
-      {/* 动作要领闪卡 */}
+      {/* ⚙️ 设置背卡（覆盖层，不卸载主卡与计时器） */}
+      {showSettings && (
+        <div className="absolute inset-0 z-40 rounded-3xl overflow-hidden">
+          <AttachedSettingsCard
+            exercise={exercise}
+            venueMode={venueMode}
+            customConfig={customConfig}
+            theme={theme}
+            onSave={(cfg) => {
+              onSaveCustomConfig?.(exercise.id, venueMode, cfg)
+              if (cfg.seatNote) onSaveSeatMemory?.(exercise.id, cfg.seatNote)
+              setShowSettings(false)
+            }}
+            onReset={() => {
+              onResetToACSMPlan?.(exercise.id, venueMode)
+              setShowSettings(false)
+            }}
+            onBack={() => setShowSettings(false)}
+          />
+        </div>
+      )}
+
+      {/* 📐 动作要领闪卡（全屏浮层） */}
       {showCue && (
         <ActionCueFlashCard
           exercise={exercise}

@@ -37,7 +37,13 @@ export function getVenueExerciseKey(exerciseId, venueMode) {
  * 3. Day 5（85% 扩次日）→ 取同场馆主日重量 85%，并继承上次 Day5 各组次数；
  * 4. 达到/接近升级次数 → 生成升级提醒与「按新重量算」重置参数。
  */
-export function getSmartPrescription(exercise, venueMode, allLogs, customConfig = null) {
+export function getSmartPrescription(
+  exercise,
+  venueMode,
+  allLogs,
+  customConfig = null,
+  upgradeAckMap = null
+) {
   const { id, category, prescription, day } = exercise
   const [minReps, maxReps] = prescription.repRange
   const scopedId = getVenueExerciseKey(id, venueMode)
@@ -145,8 +151,12 @@ export function getSmartPrescription(exercise, venueMode, allLogs, customConfig 
   const step = topWeight >= 30 ? 2.5 : 1
   const recommendedWeight = roundToGymStep(topWeight + step, step)
 
+  // V2.6 升级确认指纹锁：同一达标记录确认或忽略后，不再重复弹出升级提醒
+  const ackKey = `${id}__${venueMode}__${lastExerciseLog?.date || 'none'}__${topWeight}`
+  const acked = upgradeAckMap?.[ackKey]
+
   let overloadBanner = null
-  if (allHitMax || firstSetReps >= maxReps + 2) {
+  if (!acked && (allHitMax || firstSetReps >= maxReps + 2)) {
     overloadBanner = {
       type: 'upgrade_ready',
       level: 'gold',

@@ -88,3 +88,30 @@ export async function releaseWakeLock() {
     /* 忽略释放失败 */
   }
 }
+
+/**
+ * V2.6 统一设备能力门面（供 GiantRestBar / SwipeNumberControl 调用）
+ * 收敛音频初始化、提示音、震动与屏幕常亮，避免各组件重复处理兼容逻辑。
+ */
+export const gymDeviceManager = {
+  /** 用户手势中初始化音频上下文（iOS 需在用户交互内触发） */
+  initAudio() {
+    ensureAudio()
+  },
+  /** 步进调节的轻提示音 + 微震动 */
+  playTick() {
+    playTick()
+    vibrate(12)
+  },
+  /** 组间休息结束：三连升调响铃 + 脉冲震动 */
+  playRestFinishedChime() {
+    playTripleChime()
+    vibrate([80, 60, 80, 60, 140])
+  },
+  requestWakeLock() {
+    return requestWakeLock()
+  },
+  releaseWakeLock() {
+    return releaseWakeLock()
+  },
+}

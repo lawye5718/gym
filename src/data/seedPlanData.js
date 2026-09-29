@@ -786,3 +786,53 @@ export function getExercisesForDayAndVenue(user, day, venueMode) {
     }
   })
 }
+
+/** 自定义计划缺失四段式口诀时的兜底节奏 */
+const FALLBACK_TEMPO = {
+  concentric: { time: '1秒', cue: '发力向心 1 秒' },
+  topPause: { time: '0–1秒', cue: '顶点挤压' },
+  eccentric: { time: '2秒', cue: '离心控制 2 秒' },
+  bottomPause: { time: '1秒', cue: '底部稳停 1 秒' },
+  overloadCue: '',
+}
+
+/**
+ * V2.6 合并 AI 导入的自定义计划后的当日动作列表
+ * - customPlan 为空 → 等价于 getExercisesForDayAndVenue（内置 ACSM 2026 计划）
+ * - customPlan 中命中 user + day + venueMode 的条目按 id 覆盖或追加
+ */
+export function buildDayExercises(user, day, venueMode, customPlan) {
+  const base = getExercisesForDayAndVenue(user, day, venueMode)
+  if (!Array.isArray(customPlan) || !customPlan.length) return base
+
+  const customForDay = customPlan.filter(
+    (it) =>
+      it.user === user &&
+      Number(it.day) === Number(day) &&
+      (!it.venues || it.venues.includes(venueMode))
+  )
+  if (!customForDay.length) return base
+
+  const merged = new Map(base.map((x) => [x.id, x]))
+  for (const item of customForDay) {
+    const v = item.variants?.[venueMode] || item.variants?.newGym || {}
+    merged.set(item.id, {
+      ...item,
+      activeVariant: {
+        name: v.name || item.order || item.id,
+        machineCode: v.machineCode || '',
+        isPlateLoaded: Boolean(v.isPlateLoaded),
+        defaultSeatNote: v.defaultSeatNote || '标准机位',
+      },
+      prescription: {
+        ...(item.prescription || {}),
+        ...(v.prescription || {}),
+        repRange: v.repRange || item.prescription?.repRange || [8, 12],
+        sets: v.sets ?? item.prescription?.sets ?? 3,
+      },
+      tempoGuide: item.tempoGuide || FALLBACK_TEMPO,
+      media: item.media || { keyPointsOverlay: [] },
+    })
+  }
+  return [...merged.values()]
+}
