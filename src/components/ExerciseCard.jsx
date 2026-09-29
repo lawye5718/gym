@@ -37,6 +37,8 @@ export default function ExerciseCard({
   onResetToACSMPlan,
   onUpdateSetData,
   onSaveUpgradeAck,
+  effectiveId,
+  onSelectAlternative,
 }) {
   const variant = exercise.variants?.[venueMode] || exercise.variants?.newGym
   const { prescription, tempoGuide } = exercise
@@ -59,7 +61,7 @@ export default function ExerciseCard({
 
   const commit = (nextSets, tags = selectedTags) => {
     setSets(nextSets)
-    onUpdateSetData?.(exercise.id, nextSets, tags)
+    onUpdateSetData?.(effectiveId || exercise.id, nextSets, tags)
   }
 
   const handleFieldChange = (idx, field, val) => {
@@ -72,7 +74,7 @@ export default function ExerciseCard({
       ? selectedTags.filter((t) => t !== tag)
       : [...selectedTags, tag]
     setSelectedTags(next)
-    onUpdateSetData?.(exercise.id, sets, next)
+    onUpdateSetData?.(effectiveId || exercise.id, sets, next)
   }
 
   const firstIncompleteIdx = sets.findIndex((s) => !s.completed)
@@ -181,6 +183,30 @@ export default function ExerciseCard({
             </button>
           </div>
         </div>
+
+        {/* V2.7：「或者」备选器械自由切换（各自独立记录，互不串台） */}
+        {exercise.alternatives && exercise.alternatives.length > 0 && (
+          <div className="flex items-center gap-1 mt-1.5 p-1 rounded-xl bg-black/40 border border-amber-400/30 overflow-x-auto no-scrollbar">
+            <span className="text-[10px] text-amber-300 font-bold px-1.5 shrink-0">⇄ 备选器械:</span>
+            {exercise.alternatives.map((alt) => {
+              const active = effectiveId
+                ? effectiveId.endsWith(`::${alt.id}`)
+                : exercise.activeAltId === alt.id
+              return (
+                <button
+                  key={alt.id}
+                  type="button"
+                  onClick={() => onSelectAlternative?.(exercise.id, alt.id)}
+                  className={`shrink-0 px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                    active ? 'bg-amber-400 text-slate-950 font-black' : 'bg-white/10 text-white/70'
+                  }`}
+                >
+                  {alt.name}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         <button
           type="button"
@@ -329,7 +355,7 @@ export default function ExerciseCard({
           isOverlayOpen={isOverlayOpen}
           theme={theme}
           onStartSetComplete={handleStartSetComplete}
-          onRestFinishedAutoNext={handleAutoNext}
+          onAdvanceNext={handleAutoNext}
           onUndoLastSet={handleUndoLastSet}
           onReturnToWorkoutFace={() => {
             setShowSettings(false)

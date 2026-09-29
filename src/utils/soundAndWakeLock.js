@@ -1,6 +1,6 @@
 /**
- * V2.5 声音 / 震动 / 屏幕常亮锁
- * 供 GiantRestBar 巨型休息大键在计时结束时调用。
+ * V2.7 声音 / 震动 / 屏幕常亮统一门面
+ * 新增：可中断的 10 秒长响铃引擎（三音阶循环金属提示音 + 节奏马达震动）
  */
 
 let audioCtx = null
@@ -20,10 +20,10 @@ function ensureAudio() {
 }
 
 /** 播放单个音符 */
-function tone(ctx, freq, startAt, duration, peak = 0.25) {
+function tone(ctx, freq, startAt, duration, peak = 0.25, type = 'sine') {
   const osc = ctx.createOscillator()
   const gain = ctx.createGain()
-  osc.type = 'sine'
+  osc.type = type
   osc.frequency.setValueAtTime(freq, startAt)
   gain.gain.setValueAtTime(0.0001, startAt)
   gain.gain.linearRampToValueAtTime(peak, startAt + 0.02)
@@ -34,7 +34,7 @@ function tone(ctx, freq, startAt, duration, peak = 0.25) {
   osc.stop(startAt + duration + 0.05)
 }
 
-/** 休息结束：清脆三连升调提示音（A5 → C#6 → E6） */
+/** 休息结束：清脆三连升调提示音 */
 export function playTripleChime() {
   const ctx = ensureAudio()
   if (!ctx) return
@@ -90,28 +90,96 @@ export async function releaseWakeLock() {
 }
 
 /**
- * V2.6 统一设备能力门面（供 GiantRestBar / SwipeNumberControl 调用）
- * 收敛音频初始化、提示音、震动与屏幕常亮，避免各组件重复处理兼容逻辑。
+ * V2.7 可中断的连续响铃管理器
+ * 休息结束时播放长达 10 秒的循环三连金属琶音（C5→E5→G5）并伴随节奏震动；
+ * 用户点击屏幕任意位置可立即停止，10 秒超时亦自动停止并推进。
  */
-export const gymDeviceManager = {
-  /** 用户手势中初始化音频上下文（iOS 需在用户交互内触发） */
+class SoundAndWakeManager {
+  constructor() {
+    this.audioCtx = null
+    this.wakeLock = null
+    this.ringingTimer = null
+    this.isRinging = false
+  }
+
   initAudio() {
-    ensureAudio()
-  },
-  /** 步进调节的轻提示音 + 微震动 */
+    this.audioCtx = ensureAudio()
+  }
+
+  /** 播放单节清脆升调金属提示音 */
+  _playSingleChimeNote(freq, startTime, duration = 0.35) {
+    const ctx = this.audioCtx || ensureAudio()
+    if (!ctx) return
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = 'triangle'
+    osc.frequency.setValueAtTime(freq, startTime)
+    gain.gain.setValueAtTime(0.001, startTime)
+    gain.gain.exponentialRampToValueAtTime(0.3, startTime + 0.03)
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start(startTime)
+    osc.stop(startTime + duration)
+  }
+
+  /** 启动长达 10 秒的可中断循环提示音（每 1.6 秒循环一次三连音 + 震动） */
+  startContinuousAlarm(onAutoStop) {
+    this.initAudio()
+    this.stopContinuousAlarm() // 确保单例
+    this.isRinging = true
+
+    const playLoop = () => {
+      if (!this.isRinging) return
+      vibrate([250, 100, 250, 100, 350])
+      const ctx = this.audioCtx || ensureAudio()
+      if (!ctx) return
+      if (ctx.state === 'suspended') ctx.resume()
+      const now = ctx.currentTime
+      this._playSingleChimeNote(523.25, now)
+      this._playSingleChimeNote(659.25, now + 0.14)
+      this._playSingleChimeNote(783.99, now + 0.28)
+    }
+
+    playLoop()
+    const intervalId = setInterval(playLoop, 1600)
+
+    // 最长 10 秒自动停止
+    const timeoutId = setTimeout(() => {
+      this.stopContinuousAlarm()
+      if (onAutoStop) onAutoStop()
+    }, 10000)
+
+    this.ringingTimer = { intervalId, timeoutId }
+  }
+
+  /** 停止响铃（点击屏幕任意位置或 10s 超时时调用） */
+  stopContinuousAlarm() {
+    this.isRinging = false
+    if (this.ringingTimer) {
+      clearInterval(this.ringingTimer.intervalId)
+      clearTimeout(this.ringingTimer.timeoutId)
+      this.ringingTimer = null
+    }
+  }
+
   playTick() {
     playTick()
     vibrate(12)
-  },
-  /** 组间休息结束：三连升调响铃 + 脉冲震动 */
+  }
+
   playRestFinishedChime() {
     playTripleChime()
     vibrate([80, 60, 80, 60, 140])
-  },
+  }
+
   requestWakeLock() {
     return requestWakeLock()
-  },
+  }
+
   releaseWakeLock() {
     return releaseWakeLock()
-  },
+  }
 }
+
+export const gymDeviceManager = new SoundAndWakeManager()

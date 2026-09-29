@@ -3,45 +3,58 @@ import { BellRing, CheckCircle2, Plus, RotateCcw, SkipForward, Timer } from 'luc
 import { gymDeviceManager } from '../utils/soundAndWakeLock'
 
 /**
- * V2.6 彻底重构的「巨型休息横条」
- * ① 基于绝对时间戳（endTime = Date.now() + rest*1000）倒计时，手机锁屏/切后台不丢秒
- * ② 倒计时归零自动响铃震动并自动推进到下一组（无需手动关闭结束条）
- * ③ 移除易误触的滑动跳过，改为 [+15s] 与 [⏭️ 跳过进#X组] 实体按钮
- * ④ 用户查看「动作要领闪卡」或「设置背卡」时，屏幕顶部弹出跨卡实时提醒横幅
- * ⑤ 通过 onRestStateChange 通知父组件在倒计时期间锁定上下翻牌
+ * V2.7 巨型休息横条
+ * ① 绝对时间戳倒计时（锁屏/切后台不丢秒）
+ * ② 倒计时归零进入 alarm_ringing：长达 10 秒循环金属响铃 + 震动
+ * ③ 响铃期间全屏呼吸遮罩：点击屏幕任意区域立即静音并自动推进下一组
+ * ④ 10 秒内未操作则自动静音并推进
+ * ⑤ 保留 V2.6 修复：设置卡/要领卡为覆盖层时不卸载本组件，跨卡顶部仍显示实时提醒
  */
 export default function GiantRestBar({
-  activeSetNo, // 当前准备执行的组号（1-based）
-  totalSets, // 本动作总组数
-  allSetsCompleted, // 是否所有组均已完成
-  restDurationSeconds, // 预设休息秒数
-  isOverlayOpen, // 用户是否正打开「要领闪卡」或「设置背卡」
+  activeSetNo,
+  totalSets,
+  allSetsCompleted,
+  restDurationSeconds,
+  isOverlayOpen,
   theme,
-  onStartSetComplete, // 点击大键 → 勾选完成当前组并开始休息
-  onRestFinishedAutoNext, // 休息自然结束或跳过 → 自动聚焦下一组
-  onUndoLastSet, // 撤销刚才误点的组
-  onReturnToWorkoutFace, // 从设置卡/要领卡一键切回训练正面
-  onRestStateChange, // (isResting: boolean) 通知父组件锁定/解锁翻牌
+  onStartSetComplete,
+  onAdvanceNext,
+  onUndoLastSet,
+  onReturnToWorkoutFace,
+  onRestStateChange,
 }) {
-  const [status, setStatus] = useState('idle') // idle | counting | just_finished_toast
+  const [status, setStatus] = useState('idle') // idle | counting | alarm_ringing
   const [secondsLeft, setSecondsLeft] = useState(restDurationSeconds)
   const endTimeRef = useRef(null)
   const timerRef = useRef(null)
 
-  // 通知父组件：倒计时期间锁定上下翻牌
+  const isLocked = status === 'counting' || status === 'alarm_ringing'
+
+  // 通知父组件：倒计时/响铃期间锁定上下翻牌
   useEffect(() => {
-    onRestStateChange?.(status === 'counting')
-  }, [status, onRestStateChange])
+    onRestStateChange?.(isLocked)
+  }, [isLocked, onRestStateChange])
 
   // 动作切换 / 休息时长变化时重置
   useEffect(() => {
     clearInterval(timerRef.current)
+    gymDeviceManager.stopContinuousAlarm()
     endTimeRef.current = null
     setStatus('idle')
     setSecondsLeft(restDurationSeconds)
   }, [restDurationSeconds])
 
-  // 绝对时间戳高精度倒计时（250ms 轮询 + visibilitychange 校准）
+  // 停止响铃并推进下一项
+  const handleStopAlarmAndAdvance = () => {
+    gymDeviceManager.stopContinuousAlarm()
+    clearInterval(timerRef.current)
+    endTimeRef.current = null
+    setStatus('idle')
+    setSecondsLeft(restDurationSeconds)
+    onAdvanceNext?.()
+  }
+
+  // 绝对时间戳高精度倒计时
   useEffect(() => {
     if (status !== 'counting') return
 
@@ -53,13 +66,9 @@ export default function GiantRestBar({
       if (remaining <= 0) {
         clearInterval(timerRef.current)
         endTimeRef.current = null
-        gymDeviceManager.playRestFinishedChime()
-        setStatus('just_finished_toast')
-        onRestFinishedAutoNext?.()
-        setTimeout(() => {
-          setStatus((curr) => (curr === 'just_finished_toast' ? 'idle' : curr))
-          setSecondsLeft(restDurationSeconds)
-        }, 3500)
+        setStatus('alarm_ringing')
+        // 启动长达 10s 的响铃；超时或点击屏幕则停止并自动推进
+        gymDeviceManager.startContinuousAlarm(() => handleStopAlarmAndAdvance())
       }
     }
 
@@ -71,21 +80,18 @@ export default function GiantRestBar({
       clearInterval(timerRef.current)
       document.removeEventListener('visibilitychange', tick)
     }
-  }, [status, restDurationSeconds, onRestFinishedAutoNext])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
 
   // 组件卸载清理
   useEffect(
     () => () => {
       clearInterval(timerRef.current)
+      gymDeviceManager.stopContinuousAlarm()
       gymDeviceManager.releaseWakeLock()
     },
     []
   )
-
-  const stopTimer = () => {
-    clearInterval(timerRef.current)
-    endTimeRef.current = null
-  }
 
   const handleStartRest = () => {
     if (allSetsCompleted) return
@@ -97,13 +103,10 @@ export default function GiantRestBar({
     setStatus('counting')
   }
 
-  const handleSkipRest = (e) => {
+  const handleSkip = (e) => {
     if (e) e.stopPropagation()
-    stopTimer()
-    setStatus('idle')
-    setSecondsLeft(restDurationSeconds)
     gymDeviceManager.playTick()
-    onRestFinishedAutoNext?.()
+    handleStopAlarmAndAdvance()
   }
 
   const handleAdd15s = (e) => {
@@ -116,10 +119,7 @@ export default function GiantRestBar({
 
   const progressPct =
     status === 'counting'
-      ? Math.max(
-          0,
-          Math.min(100, ((restDurationSeconds - secondsLeft) / restDurationSeconds) * 100)
-        )
+      ? Math.max(0, Math.min(100, ((restDurationSeconds - secondsLeft) / restDurationSeconds) * 100))
       : 100
 
   const formatTime = (sec) => {
@@ -132,33 +132,52 @@ export default function GiantRestBar({
 
   return (
     <>
-      {/* 跨卡全局顶层悬浮提醒：查看要领卡/设置卡时顶部置顶显示计时与到点提醒 */}
-      {isOverlayOpen && (status === 'counting' || status === 'just_finished_toast') && (
+      {/* 响铃中：全屏轻触打断遮罩（最长 10s 自动推进） */}
+      {status === 'alarm_ringing' && (
+        <div
+          onClick={handleStopAlarmAndAdvance}
+          className="fixed inset-0 z-[100] bg-emerald-500/35 backdrop-blur-sm flex flex-col items-center justify-center p-6 cursor-pointer animate-pulse select-none"
+        >
+          <div className="bg-slate-950/95 border-2 border-emerald-400 p-6 rounded-3xl text-center shadow-2xl max-w-sm w-full">
+            <BellRing className="w-14 h-14 text-emerald-400 mx-auto animate-bounce mb-3" />
+            <div className="text-xl font-black text-white">🔔 组间休息结束！</div>
+            <p className="text-xs text-emerald-300 font-semibold mt-1">
+              轻触屏幕任意区域立即停止响铃，进入下一组
+            </p>
+            <div className="mt-4 px-3 py-1.5 rounded-xl bg-white/10 text-[11px] text-slate-300">
+              ⏱️ 10 秒内未操作将自动进入
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 跨卡顶部提醒（用户正查看设置卡/要领卡时） */}
+      {isOverlayOpen && isLocked && (
         <div
           onClick={() => {
-            if (status === 'just_finished_toast') setStatus('idle')
-            onReturnToWorkoutFace?.()
+            if (status === 'alarm_ringing') handleStopAlarmAndAdvance()
+            else onReturnToWorkoutFace?.()
           }}
-          className={`fixed top-3 inset-x-4 z-[70] rounded-2xl px-4 py-3 border-2 shadow-2xl flex items-center justify-between cursor-pointer transition-all ${
-            status === 'just_finished_toast'
+          className={`fixed top-3 inset-x-4 z-[70] rounded-2xl px-4 py-3 border-2 shadow-2xl flex items-center justify-between cursor-pointer ${
+            status === 'alarm_ringing'
               ? 'bg-gradient-to-r from-emerald-400 via-amber-300 to-emerald-400 text-slate-950 border-white animate-bounce'
               : 'bg-slate-950/95 border-cyan-400/70 text-white backdrop-blur-md'
           }`}
         >
           <div className="flex items-center gap-2.5">
-            {status === 'just_finished_toast' ? (
+            {status === 'alarm_ringing' ? (
               <BellRing className="w-6 h-6 text-slate-950" />
             ) : (
               <Timer className="w-5 h-5 text-cyan-400 animate-spin" />
             )}
             <div className="text-left">
               <div className="text-xs font-black">
-                {status === 'just_finished_toast'
+                {status === 'alarm_ringing'
                   ? `🔔 休息结束！该做第 #${nextSetNo} 组了！`
                   : `⏳ 组间休息倒计时：${formatTime(secondsLeft)}`}
               </div>
               <div className="text-[10px] opacity-80 font-semibold">
-                {status === 'just_finished_toast'
+                {status === 'alarm_ringing'
                   ? '点击此横幅立即返回训练卡开练'
                   : '翻牌已锁定 · 可安心查看要领或设置'}
               </div>
@@ -167,7 +186,7 @@ export default function GiantRestBar({
           {status === 'counting' && (
             <button
               type="button"
-              onClick={handleSkipRest}
+              onClick={handleSkip}
               className="px-2.5 py-1 rounded-xl bg-white/15 text-[11px] font-bold text-amber-300"
             >
               跳过休息
@@ -176,15 +195,14 @@ export default function GiantRestBar({
         </div>
       )}
 
-      {/* 卡片底部巨型横条大键主体 */}
+      {/* 休息条主体 */}
       <div
         onClick={() => {
           if (status === 'idle' && !allSetsCompleted) handleStartRest()
-          if (status === 'just_finished_toast') setStatus('idle')
         }}
         className={`relative w-full h-16 rounded-2xl overflow-hidden select-none transition-all duration-300 border-2 shadow-xl flex items-center justify-between px-4 ${
-          status === 'just_finished_toast'
-            ? 'bg-gradient-to-r from-emerald-400 via-amber-300 to-emerald-400 text-slate-950 border-white animate-pulse shadow-emerald-400/50 cursor-pointer'
+          status === 'alarm_ringing'
+            ? 'bg-gradient-to-r from-emerald-400 via-amber-300 to-emerald-400 text-slate-950 border-white animate-pulse'
             : status === 'counting'
             ? 'bg-slate-900/95 border-cyan-400/60 text-white shadow-cyan-950/50'
             : allSetsCompleted
@@ -199,17 +217,17 @@ export default function GiantRestBar({
           />
         )}
 
-        {/* 状态 1：空闲（点击完成当前组并启动休息） */}
+        {/* 空闲：点击完成当前组并启动休息 */}
         {status === 'idle' && !allSetsCompleted && (
           <div className="relative z-10 w-full flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <Timer className="w-6 h-6" />
               <div className="text-left">
                 <div className="text-sm font-black tracking-wide">
-                  完成第 #{nextSetNo} 组 · 点击开始 {restDurationSeconds}s 休息
+                  完成第 #{nextSetNo} 组 · 开始 {restDurationSeconds}s 休息
                 </div>
                 <div className="text-[10px] opacity-85 font-medium">
-                  共 {totalSets} 组 · 休息结束将自动响铃并进入下一组
+                  第 #{nextSetNo}/{totalSets} 组 · 结束将长响铃并自动进入下一组
                 </div>
               </div>
             </div>
@@ -219,14 +237,14 @@ export default function GiantRestBar({
           </div>
         )}
 
-        {/* 状态 1B：本卡全部组已完成 */}
+        {/* 全部完成 */}
         {status === 'idle' && allSetsCompleted && (
           <div className="relative z-10 w-full flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <CheckCircle2 className="w-6 h-6 text-emerald-400" />
               <div className="text-left">
-                <div className="text-sm font-black">🎉 本卡 {totalSets} 组已全部完成！</div>
-                <div className="text-[10px] opacity-80">请上下滑动屏幕进入下一张动作卡片</div>
+                <div className="text-sm font-black">🎉 本动作 {totalSets} 组已全部达成！</div>
+                <div className="text-[10px] opacity-80">向上滑动或查看清算卡</div>
               </div>
             </div>
             {onUndoLastSet && (
@@ -245,7 +263,7 @@ export default function GiantRestBar({
           </div>
         )}
 
-        {/* 状态 2：倒计时中（锁定翻牌，实体 [+15s] 与 [跳过] 按钮） */}
+        {/* 倒计时中 */}
         {status === 'counting' && (
           <div className="relative z-10 w-full flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -254,10 +272,10 @@ export default function GiantRestBar({
               </div>
               <div className="text-left min-w-0">
                 <div className="text-xs font-extrabold text-white truncate">
-                  休息中（翻牌已锁）· 准备第 #{nextSetNo} 组
+                  组间休息中 · 翻牌锁定
                 </div>
                 <div className="text-[10px] text-amber-300 font-medium truncate">
-                  可随时点右上角查看「动作要领」或「设置」
+                  准备第 #{nextSetNo} 组（响铃长达 10s）
                 </div>
               </div>
             </div>
@@ -273,7 +291,7 @@ export default function GiantRestBar({
               </button>
               <button
                 type="button"
-                onClick={handleSkipRest}
+                onClick={handleSkip}
                 className="px-2.5 py-1.5 rounded-xl bg-amber-400 text-slate-950 text-[11px] font-black flex items-center gap-1 shadow active:scale-95"
               >
                 <SkipForward className="w-3.5 h-3.5" />
@@ -283,18 +301,16 @@ export default function GiantRestBar({
           </div>
         )}
 
-        {/* 状态 3：休息结束响铃提醒（已自动进入下一组，3.5 秒后自动消退） */}
-        {status === 'just_finished_toast' && (
+        {/* 响铃中（横条同步提示） */}
+        {status === 'alarm_ringing' && (
           <div className="relative z-10 w-full flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <BellRing className="w-6 h-6 animate-bounce text-slate-950" />
               <div className="text-left">
                 <div className="text-sm font-black text-slate-950">
-                  🔔 休息结束！已自动进入第 #{nextSetNo} 组
+                  🔔 响铃中 · 即将进入第 #{nextSetNo} 组
                 </div>
-                <div className="text-[10px] font-bold text-slate-800">
-                  请直接开练 · 练完第 #{nextSetNo} 组后再次点击此大键
-                </div>
+                <div className="text-[10px] font-bold text-slate-800">轻触屏幕任意处立即开练</div>
               </div>
             </div>
             <span className="px-2.5 py-1 rounded-xl bg-slate-950 text-amber-300 text-xs font-black">

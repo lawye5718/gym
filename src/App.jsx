@@ -17,10 +17,15 @@ import {
 import HeaderSwitcher from './components/HeaderSwitcher'
 import DaySwiper from './components/DaySwiper'
 import ExerciseCard from './components/ExerciseCard'
+import SupersetCard from './components/SupersetCard'
+import DailySummaryCard from './components/DailySummaryCard'
+import WelcomeCard from './components/WelcomeCard'
 import FinaleCard from './components/FinaleCard'
 import CardioPanel from './components/CardioPanel'
 import AnalyticsModal from './components/AnalyticsModal'
 import PlanAndAvatarModal from './components/PlanAndAvatarModal'
+
+const todayStr = () => new Date().toISOString().slice(0, 10)
 
 export default function App() {
   const initialState = useMemo(() => loadAllState(), [])
@@ -28,10 +33,11 @@ export default function App() {
   const [seatMemory, setSeatMemory] = useState(initialState.seatMemory)
   const [customConfigs, setCustomConfigs] = useState(initialState.customConfigs)
   const [cycleMeta, setCycleMeta] = useState(initialState.cycleMeta)
-  // V2.6：自定义头像、自定义训练计划、升级确认指纹锁
   const [customAvatars, setCustomAvatars] = useState(initialState.customAvatars || {})
   const [customPlan, setCustomPlan] = useState(initialState.customPlan || null)
   const [upgradeAckMap, setUpgradeAckMap] = useState(initialState.upgradeAckMap || {})
+  // V2.7：「或者」备选器械选择（exerciseId -> altId）
+  const [altSelections, setAltSelections] = useState({})
 
   const [currentUser, setCurrentUser] = useState('leo')
   const [venueMode, setVenueMode] = useState('newGym')
@@ -43,24 +49,53 @@ export default function App() {
 
   const theme = THEMES[currentUser]
 
-  // 当天 / 当人 / 当馆动作（已合并 AI 导入的自定义计划）
   const dayExercises = useMemo(
     () => buildDayExercises(currentUser, currentDay, venueMode, customPlan),
     [currentUser, currentDay, venueMode, customPlan]
   )
 
-  const totalDeckCards = dayExercises.length > 0 ? dayExercises.length + 1 : 1
-  const safeCardIdx = Math.min(activeCardIdx, totalDeckCards - 1)
+  /** 附带智能预填：使清算卡在动作尚未打卡时也能直接录入 / 修改每一组 */
+  const dayExercisesWithPrefill = useMemo(
+    () =>
+      dayExercises.map((ex) => ({
+        ...ex,
+        prefillSets: getSmartPrescription(
+          ex,
+          venueMode,
+          logs,
+          customConfigs[getVenueExerciseKey(ex.id, venueMode)],
+          upgradeAckMap
+        ).prefillSets,
+      })),
+    [dayExercises, venueMode, logs, customConfigs, upgradeAckMap]
+  )
 
-  // ── V2.6 单步防抖锁：一次上下滑严格只翻 1 张；休息倒计时期间锁定翻牌 ──
+  // V2.7 牌堆：欢迎卡 → 动作卡（普通 / 超级组）→ 每日清算卡 → 完赛尾卡
+  const deckCards = useMemo(() => {
+    if (!dayExercisesWithPrefill.length) return []
+    return [
+      { type: 'welcome' },
+      ...dayExercisesWithPrefill.map((ex) => ({ type: 'exercise', data: ex })),
+      { type: 'summary' },
+      { type: 'finale' },
+    ]
+  }, [dayExercisesWithPrefill])
+
+  const totalDeckCards = deckCards.length || 1
+  const safeCardIdx = Math.min(activeCardIdx, totalDeckCards - 1)
+  const currentCard = deckCards[safeCardIdx]
+  const summaryIdx = dayExercises.length + 1
+  const finaleIdx = dayExercises.length + 2
+
+  // ── 单步防抖锁：一次上下滑严格只翻 1 张；休息/响铃期间锁定翻牌 ──
   const isFlippingRef = useRef(false)
   const touchHandledRef = useRef(false)
 
   const handleFlipCard = useCallback(
     (direction) => {
-      if (dayExercises.length === 0) return
-      if (isResting) return // 组间休息中禁止翻牌（大键已提示“翻牌已锁”）
-      if (isFlippingRef.current) return // 320ms 冷却，杜绝跳卡
+      if (!deckCards.length) return
+      if (isResting) return
+      if (isFlippingRef.current) return
       isFlippingRef.current = true
       setActiveCardIdx((prev) => {
         if (direction === 'next') return (prev + 1) % totalDeckCards
@@ -70,7 +105,7 @@ export default function App() {
         isFlippingRef.current = false
       }, 320)
     },
-    [dayExercises.length, totalDeckCards, isResting]
+    [deckCards.length, totalDeckCards, isResting]
   )
 
   const stageTouchRef = useRef({ x: 0, y: 0 })
@@ -81,7 +116,7 @@ export default function App() {
   }
 
   const handleStageTouchEnd = (e) => {
-    if (touchHandledRef.current) return // 单次 Touch 周期只处理一次
+    if (touchHandledRef.current) return
     const dx = e.changedTouches[0].clientX - stageTouchRef.current.x
     const dy = e.changedTouches[0].clientY - stageTouchRef.current.y
 
@@ -94,6 +129,79 @@ export default function App() {
       setActiveCardIdx(0)
     }
   }
+
+  /** 当日打卡日志 */
+  const todayLog = useMemo(() => {
+    const today = todayStr()
+    return logs.find(
+      (l) =>
+        l.date === today && l.user === currentUser && l.day === currentDay && l.venueMode === venueMode
+    )
+  }, [logs, currentUser, currentDay, venueMode])
+
+  const todayStats = useMemo(() => {
+    let completedSetsCount = 0
+    let totalVolumeKg = 0
+    const totalSetsCount = dayExercises.reduce((sum, ex) => sum + (ex.prescription?.sets || 0), 0)
+    if (todayLog?.exercises) {
+      for (const ex of todayLog.exercises) {
+        for (const s of ex.sets || []) {
+          if (s.completed) {
+            completedSetsCount += 1
+            totalVolumeKg += (Number(s.weight) || 0) * (Number(s.reps) || 0)
+          }
+        }
+      }
+    }
+    return { completedSetsCount, totalSetsCount, totalVolumeKg: Math.round(totalVolumeKg) }
+  }, [todayLog, dayExercises])
+
+  /** 三色状态灯：未开始(灰) / 进行中(琥珀) / 已完成(翠绿) */
+  const cardCompletion = useMemo(
+    () =>
+      dayExercises.map((ex) => {
+        const rec = todayLog?.exercises?.find((e) => e.exerciseId === ex.id)
+        const total = ex.prescription?.sets || 0
+        const done = (rec?.sets || []).filter((s) => s.completed).length
+        if (total > 0 && done >= total) return 'done'
+        if (done > 0) return 'partial'
+        return 'todo'
+      }),
+    [todayLog, dayExercises]
+  )
+
+  // 当前动作卡（含备选器械的有效 ID）
+  const currentExercise = currentCard?.type === 'exercise' ? currentCard.data : null
+  const currentAltId = currentExercise
+    ? altSelections[currentExercise.id] || currentExercise.activeAltId
+    : null
+  const currentEffectiveId =
+    currentExercise && currentAltId ? `${currentExercise.id}::${currentAltId}` : currentExercise?.id
+  const currentScopedKey = currentEffectiveId ? getVenueExerciseKey(currentEffectiveId, venueMode) : ''
+
+  const currentSmartData = useMemo(() => {
+    if (!currentExercise) return null
+    return getSmartPrescription(
+      { ...currentExercise, id: currentEffectiveId || currentExercise.id },
+      venueMode,
+      logs,
+      customConfigs[currentScopedKey],
+      upgradeAckMap
+    )
+  }, [currentExercise, currentEffectiveId, venueMode, logs, customConfigs, currentScopedKey, upgradeAckMap])
+
+  /** 超级组：为两个子动作各自计算预填数据 */
+  const supersetData = useMemo(() => {
+    if (currentExercise?.type !== 'superset') return null
+    return {
+      ...currentExercise,
+      subExercises: (currentExercise.subExercises || []).map((sub) => {
+        const key = getVenueExerciseKey(sub.id, venueMode)
+        const sd = getSmartPrescription(sub, venueMode, logs, customConfigs[key], upgradeAckMap)
+        return { ...sub, prefillSets: sd.prefillSets, customConfig: customConfigs[key] }
+      }),
+    }
+  }, [currentExercise, venueMode, logs, customConfigs, upgradeAckMap])
 
   const handleUpdateSetData = (exerciseId, nextSets, quickTags) => {
     const nextLogs = saveExerciseSessionLog({
@@ -108,17 +216,65 @@ export default function App() {
     setLogs([...nextLogs])
   }
 
-  const handleSaveCustomConfig = (exerciseId, venue, configObj) => {
+  /** 超级组：A、B 两个子动作分别独立落库 */
+  const handleUpdateSupersetData = (supersetId, setsA, setsB) => {
+    const subs = supersetData?.subExercises || currentExercise?.subExercises || []
+    if (subs[0]) {
+      setLogs([
+        ...saveExerciseSessionLog({
+          user: currentUser,
+          day: currentDay,
+          venueMode,
+          cycleNumber: cycleMeta.cycleNumber,
+          exerciseId: subs[0].id,
+          sets: setsA,
+          quickTags: [],
+        }),
+      ])
+    }
+    if (subs[1]) {
+      setLogs([
+        ...saveExerciseSessionLog({
+          user: currentUser,
+          day: currentDay,
+          venueMode,
+          cycleNumber: cycleMeta.cycleNumber,
+          exerciseId: subs[1].id,
+          sets: setsB,
+          quickTags: [],
+        }),
+      ])
+    }
+  }
+
+  /** 清算卡：直接修改某一组的重量/次数（未打卡时用预填值起底） */
+  const handleUpdateSingleSet = (exerciseId, setIdx, field, val) => {
+    const rec = todayLog?.exercises?.find((e) => e.exerciseId === exerciseId)
+    const ex = dayExercisesWithPrefill.find((e) => e.id === exerciseId)
+    const sets = rec?.sets || ex?.prefillSets || []
+    if (!sets[setIdx]) return
+    const nextSets = sets.map((s, i) => (i === setIdx ? { ...s, [field]: Number(val) } : s))
+    handleUpdateSetData(exerciseId, nextSets, rec?.quickTags || [])
+  }
+
+  /** 清算卡：切换某一组完成状态 */
+  const handleToggleSetDone = (exerciseId, setIdx) => {
+    const rec = todayLog?.exercises?.find((e) => e.exerciseId === exerciseId)
+    const ex = dayExercisesWithPrefill.find((e) => e.id === exerciseId)
+    const sets = rec?.sets || ex?.prefillSets || []
+    if (!sets[setIdx]) return
+    const nextSets = sets.map((s, i) => (i === setIdx ? { ...s, completed: !s.completed } : s))
+    handleUpdateSetData(exerciseId, nextSets, rec?.quickTags || [])
+  }
+
+  const handleSaveCustomConfig = (exerciseId, venue, configObj) =>
     setCustomConfigs({ ...saveCustomExerciseConfig(exerciseId, venue, configObj) })
-  }
-
-  const handleResetToACSMPlan = (exerciseId, venue) => {
+  const handleResetToACSMPlan = (exerciseId, venue) =>
     setCustomConfigs({ ...resetCustomExerciseConfig(exerciseId, venue) })
-  }
-
-  const handleSaveUpgradeAck = (ackKey, decision) => {
+  const handleSaveUpgradeAck = (ackKey, decision) =>
     setUpgradeAckMap({ ...saveUpgradeAck(ackKey, decision) })
-  }
+  const handleSelectAlternative = (exerciseId, altId) =>
+    setAltSelections((prev) => ({ ...prev, [exerciseId]: altId }))
 
   const handleSaveCardio = (cardioData) => {
     const res = saveCardioOrRestLog({
@@ -132,69 +288,32 @@ export default function App() {
     setCycleMeta({ ...res.cycleMeta })
   }
 
-  // 头像与计划
-  const handleSaveAvatar = (userKey, dataUrl) => setCustomAvatars({ ...saveCustomAvatar(userKey, dataUrl) })
-  const handleResetAvatar = (userKey) => setCustomAvatars({ ...resetCustomAvatar(userKey) })
-  const handleImportPlan = (parsed) => {
-    const res = importCustomPlan(parsed)
-    setCustomPlan(res.plan)
-    return res
+  const handleSaveAvatar = (k, d) => setCustomAvatars({ ...saveCustomAvatar(k, d) })
+  const handleResetAvatar = (k) => setCustomAvatars({ ...resetCustomAvatar(k) })
+  const handleImportPlan = (p) => {
+    const r = importCustomPlan(p)
+    setCustomPlan(r.plan)
+    return r
   }
   const handleResetPlan = () => setCustomPlan(resetCustomPlan())
 
-  const todayCardio = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10)
-    const log = logs.find(
-      (l) =>
-        l.date === today && l.user === currentUser && l.day === currentDay && l.venueMode === venueMode
-    )
-    return log?.cardioSummary || null
-  }, [logs, currentUser, currentDay, venueMode])
-
-  const todayStats = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10)
-    const todayLog = logs.find(
-      (l) =>
-        l.date === today && l.user === currentUser && l.day === currentDay && l.venueMode === venueMode
-    )
-    let completedSetsCount = 0
-    let totalVolumeKg = 0
-    const totalSetsCount = dayExercises.reduce((sum, ex) => sum + (ex.prescription?.sets || 0), 0)
-
-    if (todayLog?.exercises) {
-      for (const ex of todayLog.exercises) {
-        for (const s of ex.sets || []) {
-          if (s.completed) {
-            completedSetsCount += 1
-            totalVolumeKg += (Number(s.weight) || 0) * (Number(s.reps) || 0)
-          }
-        }
-      }
-    }
-    return { completedSetsCount, totalSetsCount, totalVolumeKg: Math.round(totalVolumeKg) }
-  }, [logs, currentUser, currentDay, venueMode, dayExercises])
-
-  /** 三色状态灯：未开始(灰) / 进行中(琥珀) / 已完成(翠绿) */
-  const cardCompletion = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10)
-    const todayLog = logs.find(
-      (l) =>
-        l.date === today && l.user === currentUser && l.day === currentDay && l.venueMode === venueMode
-    )
-    return dayExercises.map((ex) => {
-      const rec = todayLog?.exercises?.find((e) => e.exerciseId === ex.id)
-      const total = ex.prescription?.sets || 0
-      const done = (rec?.sets || []).filter((s) => s.completed).length
-      if (total > 0 && done >= total) return 'done'
-      if (done > 0) return 'partial'
-      return 'todo'
+  const dayMetaMap = useMemo(() => {
+    const m = {}
+    DAY_META.forEach((d) => {
+      m[d.day] = { name: d.title, focus: d.sub, emoji: d.emoji }
     })
-  }, [logs, currentUser, currentDay, venueMode, dayExercises])
+    return m
+  }, [])
 
-  const currentExercise = dayExercises[safeCardIdx]
-  const currentScopedKey = currentExercise
-    ? getVenueExerciseKey(currentExercise.id, venueMode)
-    : ''
+  const dotFor = (idx) => {
+    if (idx === 0 || idx >= summaryIdx) {
+      return idx === safeCardIdx ? theme.dotActive : theme.dotInactive
+    }
+    const state = cardCompletion[idx - 1] || 'todo'
+    if (state === 'done') return 'bg-emerald-400 h-5 w-1.5'
+    if (state === 'partial') return 'bg-amber-400 h-5 w-1.5 animate-pulse'
+    return idx === safeCardIdx ? theme.dotActive : theme.dotInactive
+  }
 
   return (
     <div
@@ -214,6 +333,7 @@ export default function App() {
         customAvatars={customAvatars}
         onOpenAnalytics={() => setShowAnalytics(true)}
         onOpenPlanSettings={() => setShowPlanSettings(true)}
+        onOpenDailySummary={() => setActiveCardIdx(summaryIdx)}
       />
 
       <DaySwiper
@@ -237,34 +357,69 @@ export default function App() {
         onTouchEnd={handleStageTouchEnd}
         className="flex-1 min-h-0 px-3 pt-1.5 pb-3 flex items-center justify-center relative"
       >
-        {dayExercises.length > 0 ? (
+        {!deckCards.length ? (
+          <div className="w-full h-full max-w-md">
+            <CardioPanel
+              currentDay={currentDay}
+              currentUser={currentUser}
+              venueMode={venueMode}
+              theme={theme}
+              cycleNumber={cycleMeta.cycleNumber}
+              savedCardio={todayLog?.cardioSummary || null}
+              onSave={handleSaveCardio}
+            />
+          </div>
+        ) : (
           <div className="w-full h-full max-w-md flex items-center gap-1.5">
             <div className="flex-1 h-full min-w-0">
-              {safeCardIdx < dayExercises.length ? (
-                <ExerciseCard
+              {/* 卡片 0：加油欢迎卡 */}
+              {currentCard?.type === 'welcome' && (
+                <WelcomeCard
+                  currentDay={currentDay}
+                  currentUser={currentUser}
+                  venueMode={venueMode}
+                  dayMeta={dayMetaMap}
+                  theme={theme}
+                  customAvatars={customAvatars}
+                  onStartFirstExercise={() => handleFlipCard('next')}
+                />
+              )}
+
+              {/* 动作卡：超级组 */}
+              {currentCard?.type === 'exercise' && currentExercise?.type === 'superset' && supersetData && (
+                <SupersetCard
                   key={`${currentUser}_${currentDay}_${venueMode}_${currentExercise.id}`}
+                  exercise={supersetData}
+                  venueMode={venueMode}
+                  theme={theme}
+                  cardIndex={safeCardIdx}
+                  totalDeckCards={totalDeckCards}
+                  onSaveCustomConfig={handleSaveCustomConfig}
+                  onResetToACSMPlan={handleResetToACSMPlan}
+                  onUpdateSupersetData={handleUpdateSupersetData}
+                  onFlipCard={handleFlipCard}
+                />
+              )}
+
+              {/* 动作卡：普通单动作（含“或者”备选器械切换） */}
+              {currentCard?.type === 'exercise' && currentExercise?.type !== 'superset' && currentExercise && (
+                <ExerciseCard
+                  key={`${currentUser}_${currentDay}_${venueMode}_${currentEffectiveId}`}
                   exercise={currentExercise}
                   venueMode={venueMode}
-                  smartData={getSmartPrescription(
-                    currentExercise,
-                    venueMode,
-                    logs,
-                    customConfigs[currentScopedKey],
-                    upgradeAckMap
-                  )}
+                  smartData={currentSmartData}
                   customConfig={customConfigs[currentScopedKey]}
                   seatMemory={seatMemory[currentScopedKey]}
                   theme={theme}
-                  cardIndex={safeCardIdx}
+                  cardIndex={Math.max(0, safeCardIdx - 1)}
                   totalExerciseCards={dayExercises.length}
                   upgradeAckMap={upgradeAckMap}
+                  effectiveId={currentEffectiveId}
+                  onSelectAlternative={handleSelectAlternative}
                   onRestStateChange={setIsResting}
                   onSaveUpgradeAck={handleSaveUpgradeAck}
                   onSaveSeatMemory={(exId, text) => {
-                    const next = {
-                      ...seatMemory,
-                      [getVenueExerciseKey(exId, venueMode)]: text,
-                    }
+                    const next = { ...seatMemory, [getVenueExerciseKey(exId, venueMode)]: text }
                     setSeatMemory(next)
                     localStorage.setItem('acsm2026_seat_memory_v25', JSON.stringify(next))
                   }}
@@ -273,7 +428,26 @@ export default function App() {
                   onUpdateSetData={handleUpdateSetData}
                   onFlipCard={handleFlipCard}
                 />
-              ) : (
+              )}
+
+              {/* 每日清算卡 */}
+              {currentCard?.type === 'summary' && (
+                <DailySummaryCard
+                  currentDay={currentDay}
+                  currentUser={currentUser}
+                  venueMode={venueMode}
+                  dayExercises={dayExercisesWithPrefill}
+                  todayLog={todayLog}
+                  theme={theme}
+                  onUpdateSingleSet={handleUpdateSingleSet}
+                  onToggleSetDone={handleToggleSetDone}
+                  onFinishWorkout={() => setActiveCardIdx(finaleIdx)}
+                  onReturnToDeck={() => setActiveCardIdx(0)}
+                />
+              )}
+
+              {/* 完赛尾卡 */}
+              {currentCard?.type === 'finale' && (
                 <FinaleCard
                   currentUser={currentUser}
                   currentDay={currentDay}
@@ -289,51 +463,34 @@ export default function App() {
 
             {/* 右侧竖向牌序三色状态灯 */}
             <div className="flex flex-col items-center justify-center gap-1.5 px-0.5">
-              {Array.from({ length: totalDeckCards }).map((_, idx) => {
-                const state = idx === dayExercises.length ? 'finale' : cardCompletion[idx] || 'todo'
-                const isActive = idx === safeCardIdx
-                const dotClass =
-                  state === 'done'
-                    ? 'bg-emerald-400 h-5 w-1.5'
-                    : state === 'partial'
-                    ? 'bg-amber-400 h-5 w-1.5 animate-pulse'
-                    : isActive
-                    ? theme.dotActive
-                    : theme.dotInactive
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setActiveCardIdx(idx)}
-                    className={`rounded-full transition-all duration-300 ${dotClass}`}
-                    title={
-                      idx === dayExercises.length
-                        ? '完赛尾卡'
-                        : `动作 #${idx + 1}（${
-                            state === 'done' ? '已完成' : state === 'partial' ? '进行中' : '未开始'
-                          }）`
-                    }
-                  />
-                )
-              })}
+              {deckCards.map((_, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setActiveCardIdx(idx)}
+                  className={`rounded-full transition-all duration-300 ${dotFor(idx)}`}
+                  title={
+                    idx === 0
+                      ? '欢迎卡'
+                      : idx === summaryIdx
+                      ? '当日清算卡'
+                      : idx === finaleIdx
+                      ? '完赛尾卡'
+                      : `动作 #${idx}（${
+                          cardCompletion[idx - 1] === 'done'
+                            ? '已完成'
+                            : cardCompletion[idx - 1] === 'partial'
+                            ? '进行中'
+                            : '未开始'
+                        }）`
+                  }
+                />
+              ))}
             </div>
-          </div>
-        ) : (
-          <div className="w-full h-full max-w-md">
-            <CardioPanel
-              currentDay={currentDay}
-              currentUser={currentUser}
-              venueMode={venueMode}
-              theme={theme}
-              cycleNumber={cycleMeta.cycleNumber}
-              savedCardio={todayCardio}
-              onSave={handleSaveCardio}
-            />
           </div>
         )}
       </main>
 
-      {/* 统计抽屉 */}
       {showAnalytics && (
         <AnalyticsModal
           logs={logs}
@@ -345,7 +502,6 @@ export default function App() {
         />
       )}
 
-      {/* 训练计划导入 & 自定义头像中心 */}
       {showPlanSettings && (
         <PlanAndAvatarModal
           customAvatars={customAvatars}
