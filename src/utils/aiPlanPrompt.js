@@ -24,6 +24,12 @@ export const AI_PLAN_COMPILER_PROMPT = `你现在是《八天无极微循环》�
    - 若为 Day 5 的 85%扩次 动作，请将 "isDay5RepPush": true 写入 prescription，并自动填写 "day5SourceMuscle" 以便自动按主日 85% 折算重量。
 4. **肌群分类枚举 (\`muscleGroup\`)**：
    - 必须严格从以下 6 个值中选择一个："quads" (股四头/下肢前链)、"glutes_hams" (臀大肌/腘绳后链)、"chest" (胸)、"back" (背)、"shoulders" (肩)、"arms" (二头/三头/核心)。
+5. **V2.8 拆分铁律与默认值要求（必须遵守）**：
+   - 凡是两个动作可能使用不同重量（如哈克深蹲 vs 45度倒蹬机、奥杆 RDL vs 哑铃 RDL、器械推肩 vs 哑铃推肩、插销划船 vs 高位下拉），一律拆分为拥有独立 id 的独立卡片，不要把“或者”写在同一张卡里。
+   - 每个 variants 的每个场馆（newGym / oldGym / home）都必须输出：
+     - defaultWeight：该场馆初始默认重量（严禁 0kg，自重动作如平板支撑除外）；
+     - sets：默认组数；
+     - defaultRepsList：每组默认次数数组，须带合理递减阶梯（如 [12, 10, 10, 8]）。
 
 ### 标准输出 JSON Schema 模板：
 {

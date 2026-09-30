@@ -200,7 +200,7 @@ export default function GiantRestBar({
         onClick={() => {
           if (status === 'idle' && !allSetsCompleted) handleStartRest()
         }}
-        className={`relative w-full h-16 rounded-2xl overflow-hidden select-none transition-all duration-300 border-2 shadow-xl flex items-center justify-between px-4 ${
+        className={`relative w-full h-14 rounded-2xl overflow-hidden select-none transition-all duration-300 border-2 shadow-xl flex items-center justify-between px-3 ${
           status === 'alarm_ringing'
             ? 'bg-gradient-to-r from-emerald-400 via-amber-300 to-emerald-400 text-slate-950 border-white animate-pulse'
             : status === 'counting'

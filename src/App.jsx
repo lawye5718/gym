@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { THEMES } from './utils/themeConfig'
-import { ALL_EXERCISES, DAY_META, buildDayExercises } from './data/seedPlanData'
+import { ALL_EXERCISES, DAY_META, buildDayExercises, flattenDayExercises } from './data/seedPlanData'
 import { getSmartPrescription, getVenueExerciseKey } from './utils/overloadEngine'
 import {
   importCustomPlan,
@@ -116,9 +116,11 @@ export default function App() {
   }
 
   const handleStageTouchEnd = (e) => {
+    const touch = e.changedTouches?.[0]
+    if (!touch) return // 防御：touchEnd 无触点信息时直接忽略
     if (touchHandledRef.current) return
-    const dx = e.changedTouches[0].clientX - stageTouchRef.current.x
-    const dy = e.changedTouches[0].clientY - stageTouchRef.current.y
+    const dx = touch.clientX - stageTouchRef.current.x
+    const dy = touch.clientY - stageTouchRef.current.y
 
     if (Math.abs(dy) > 45 && Math.abs(dy) > Math.abs(dx) * 1.2) {
       touchHandledRef.current = true
@@ -271,8 +273,15 @@ export default function App() {
     setCustomConfigs({ ...saveCustomExerciseConfig(exerciseId, venue, configObj) })
   const handleResetToACSMPlan = (exerciseId, venue) =>
     setCustomConfigs({ ...resetCustomExerciseConfig(exerciseId, venue) })
-  const handleSaveUpgradeAck = (ackKey, decision) =>
+  /** 升级提醒确认：accepted 时同步把新重量写为自定义默认重量 */
+  const handleAckOverload = (ackKey, decision, exerciseId, venue, newWeight) => {
+    if (decision === 'accepted' && exerciseId && venue) {
+      setCustomConfigs({
+        ...saveCustomExerciseConfig(exerciseId, venue, { defaultWeight: newWeight }),
+      })
+    }
     setUpgradeAckMap({ ...saveUpgradeAck(ackKey, decision) })
+  }
   const handleSelectAlternative = (exerciseId, altId) =>
     setAltSelections((prev) => ({ ...prev, [exerciseId]: altId }))
 
@@ -355,7 +364,7 @@ export default function App() {
       <main
         onTouchStart={handleStageTouchStart}
         onTouchEnd={handleStageTouchEnd}
-        className="flex-1 min-h-0 px-3 pt-1.5 pb-3 flex items-center justify-center relative"
+        className="flex-1 min-h-0 px-3 pt-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex items-center justify-center relative"
       >
         {!deckCards.length ? (
           <div className="w-full h-full max-w-md">
@@ -417,7 +426,7 @@ export default function App() {
                   effectiveId={currentEffectiveId}
                   onSelectAlternative={handleSelectAlternative}
                   onRestStateChange={setIsResting}
-                  onSaveUpgradeAck={handleSaveUpgradeAck}
+                  onAckOverload={handleAckOverload}
                   onSaveSeatMemory={(exId, text) => {
                     const next = { ...seatMemory, [getVenueExerciseKey(exId, venueMode)]: text }
                     setSeatMemory(next)
@@ -436,7 +445,7 @@ export default function App() {
                   currentDay={currentDay}
                   currentUser={currentUser}
                   venueMode={venueMode}
-                  dayExercises={dayExercisesWithPrefill}
+                  dayExercises={flattenDayExercises(dayExercisesWithPrefill, venueMode)}
                   todayLog={todayLog}
                   theme={theme}
                   onUpdateSingleSet={handleUpdateSingleSet}

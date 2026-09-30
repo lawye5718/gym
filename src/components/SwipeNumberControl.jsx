@@ -61,11 +61,6 @@ export default function SwipeNumberControl({
         </button>
       </div>
 
-      {subLabel && (
-        <div className="text-[9px] text-amber-300/90 font-medium truncate max-w-[7.5rem] mt-0.5">
-          {subLabel}
-        </div>
-      )}
     </div>
   )
 }

@@ -76,7 +76,13 @@ export default function DailySummaryCard({
       </div>
 
       {/* 中部：全部动作分组清单滚动视窗 */}
-      <div className="flex-1 my-1 overflow-y-auto no-scrollbar space-y-2 pr-1">
+      {/* 阻断手势冒泡：避免上下滚动查看清算列表时误触发外层翻牌 */}
+      <div
+        className="flex-1 my-1 overflow-y-auto no-scrollbar space-y-2 pr-1"
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
+      >
         {dayExercises.map((ex) => {
           const variant = ex.activeVariant || ex.variants?.[venueMode] || ex.variants?.newGym || {}
           const exLog = todayLog?.exercises?.find((e) => e.exerciseId === ex.id)
