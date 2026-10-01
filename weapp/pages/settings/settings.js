@@ -27,6 +27,24 @@ Page({
     this.setData({ tab: e.currentTarget.dataset.tab })
   },
 
+  /**
+   * 隐私接口保护：微信要求使用相册 / 文件等隐私接口前需用户同意隐私保护指引。
+   * 上线前请在 mp 后台「设置 → 服务内容声明 → 用户隐私保护指引」中声明：
+   *   相册（读取，用于自定义头像）、用户选择的文件（用于导入计划 JSON）。
+   */
+  withPrivacy(fn) {
+    if (typeof wx.requirePrivacyAuthorize === 'function') {
+      wx.requirePrivacyAuthorize({
+        success: () => fn(),
+        fail: () => {
+          wx.showToast({ title: '需先同意隐私保护指引', icon: 'none' })
+        },
+      })
+    } else {
+      fn()
+    }
+  },
+
   // ---------- 计划导入 ----------
   onJsonInput(e) {
     this.setData({ jsonInput: e.detail.value })
@@ -34,6 +52,7 @@ Page({
 
   /** 从聊天记录选择 JSON 文件 */
   pickJsonFile() {
+    this.withPrivacy(() => {
     const fs = wx.getFileSystemManager()
     wx.chooseMessageFile({
       count: 1,
@@ -47,6 +66,7 @@ Page({
           this.setData({ msg: '文件读取失败，请改用粘贴方式' })
         }
       },
+    })
     })
   },
 
@@ -100,6 +120,7 @@ Page({
   // ---------- 头像 ----------
   chooseAvatar(e) {
     const key = e.currentTarget.dataset.id
+    this.withPrivacy(() => {
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],
@@ -126,6 +147,7 @@ Page({
           fail: () => this.setData({ msg: '图片压缩失败，请重试' }),
         })
       },
+    })
     })
   },
 

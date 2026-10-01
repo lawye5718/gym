@@ -1439,6 +1439,9 @@ export function buildDayExercises(user, day, venueMode, customPlan) {
  * V2.8 扁平化：将超级组展开为子动作 A / B 两个独立条目
  * 供「每日清算卡」与「ACSM 周容量统计」使用，避免顶层无 variants 导致报错或漏算
  */
-// V2.9：超级组展开逻辑已独立为 utils/deckFlattener.js（清算卡与 ACSM 周容量审计共用）
-// 此处保留同名导出，保证既有引用向后兼容
-export { flattenDayExercises } from './deck.js'
+// V2.9：超级组展开逻辑已独立为 utils/deck.js（清算卡与 ACSM 周容量审计共用）
+// 与 Web 版 src/data/seedPlanData.js 保持一致：导入后导出，并提供 ALL_FLATTENED_EXERCISES
+import { flattenDayExercises } from './deck.js'
+export { flattenDayExercises }
+
+export const ALL_FLATTENED_EXERCISES = flattenDayExercises(PLAN_LIBRARY)
