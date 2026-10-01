@@ -1,0 +1,67 @@
+.page {
+  padding: 24rpx;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+.hi {
+  font-size: 36rpx;
+  font-weight: 900;
+}
+.card {
+  margin: 20rpx 0;
+  padding: 22rpx;
+}
+.name {
+  font-size: 30rpx;
+  font-weight: 800;
+  margin-right: 12rpx;
+}
+.status {
+  font-size: 22rpx;
+  font-weight: 700;
+  padding: 6rpx 16rpx;
+  border-radius: 18rpx;
+}
+.status.ok {
+  background: rgba(52, 211, 153, 0.22);
+  color: #6ee7b7;
+}
+.status.no {
+  background: rgba(251, 191, 36, 0.22);
+  color: #fbbf24;
+}
+.ops {
+  margin-top: 16rpx;
+  flex-wrap: wrap;
+}
+.ops .btn {
+  margin-right: 12rpx;
+  margin-bottom: 10rpx;
+}
+.code {
+  flex: 1;
+  padding: 12rpx 16rpx;
+  border-radius: 16rpx;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 24rpx;
+  margin-right: 12rpx;
+}
+.codebig {
+  display: block;
+  font-size: 40rpx;
+  font-weight: 900;
+  letter-spacing: 4rpx;
+  margin: 12rpx 0;
+  color: #7ef0c0;
+}
+.msg {
+  padding: 16rpx;
+  border-radius: 16rpx;
+  background: rgba(110, 168, 255, 0.15);
+}
+.tips {
+  margin-top: 24rpx;
+  padding: 18rpx;
+  border-radius: 16rpx;
+  background: rgba(255, 255, 255, 0.06);
+}

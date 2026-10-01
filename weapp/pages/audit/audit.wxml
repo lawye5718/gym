@@ -1,0 +1,21 @@
+<view class="page safe-bottom">
+  <view class="hi">📊 ACSM 周容量审计</view>
+  <text class="tiny dim">{{summary}}</text>
+
+  <view class="card" wx:for="{{rows}}" wx:key="key">
+    <view class="row between">
+      <text class="name">{{item.label}}</text>
+      <text class="num {{item.ok ? 'ok' : 'no'}}">{{item.done}}/{{item.target}} 组</text>
+    </view>
+    <view class="bar">
+      <view class="fill {{item.ok ? 'ok' : ''}}" style="width: {{item.pct}}%"></view>
+    </view>
+    <text class="tiny dim">{{item.ok ? '✅ 达标' : '⏳ 距目标还差 ' + (item.target - item.done) + ' 组'}}</text>
+  </view>
+
+  <view class="tips">
+    <text class="tiny dim">统计口径：超级组已展开为 A/B 独立条目分别计数；仅统计标记为「已完成」的组。</text>
+  </view>
+
+  <view class="btn" bindtap="goBack">返回打卡</view>
+</view>

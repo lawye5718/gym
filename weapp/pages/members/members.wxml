@@ -1,0 +1,57 @@
+<view class="page safe-bottom">
+  <view class="hi">👥 成员与权限</view>
+  <text class="tiny dim">Leo 为管理员，可邀请 / 审核 / 激活成员</text>
+
+  <!-- 成员列表 -->
+  <view class="card" wx:for="{{profiles}}" wx:key="id">
+    <view class="row between">
+      <view>
+        <text class="name">{{item.name}}</text>
+        <text class="badge">{{item.role === 'admin' ? '管理员' : '成员'}}</text>
+      </view>
+      <text class="status {{item.status === 'approved' ? 'ok' : 'no'}}">
+        {{item.status === 'approved' ? '已激活' : '待激活'}}
+      </text>
+    </view>
+    <text class="tiny dim">{{item.desc}}</text>
+
+    <view class="row ops" wx:if="{{isAdmin && item.role !== 'admin'}}">
+      <view class="btn btn-primary tiny" data-id="{{item.id}}" bindtap="approve">直接激活</view>
+      <view class="btn tiny" data-id="{{item.id}}" bindtap="genCode">生成邀请码</view>
+      <view class="btn tiny" data-id="{{item.id}}" bindtap="revokeMember">撤销</view>
+    </view>
+    <view class="row ops" wx:if="{{!isAdmin && item.id === me}}">
+      <input class="code" placeholder="输入邀请码 GMT-XXX-0000" value="{{inputCode}}" bindinput="onInput" />
+      <view class="btn btn-primary tiny" bindtap="submitCode">激活</view>
+    </view>
+  </view>
+
+  <!-- 邀请码展示（管理员） -->
+  <view class="card" wx:if="{{inviteCode}}">
+    <text class="tiny dim">邀请码（发给本人，或让其在上方输入）</text>
+    <text class="codebig">{{inviteCode}}</text>
+    <view class="btn tiny" bindtap="copyCode">复制邀请码</view>
+  </view>
+
+  <!-- 切换身份 -->
+  <view class="card">
+    <text class="tiny dim">切换当前使用身份</text>
+    <view class="row ops">
+      <view
+        wx:for="{{profiles}}"
+        wx:key="id"
+        class="btn tiny {{me === item.id ? 'btn-primary' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="switchMe"
+      >{{item.name}}</view>
+    </view>
+  </view>
+
+  <view wx:if="{{msg}}" class="msg tiny">{{msg}}</view>
+
+  <view class="btn" bindtap="goBack">返回打卡</view>
+
+  <view class="tips">
+    <text class="tiny dim">官方路径（推荐）：管理员 Leo 在微信公众平台「管理 → 成员管理」把 Linda 添加为体验成员，Linda 扫体验版二维码即可打开；再在上方点「直接激活」或输入邀请码完成授权。</text>
+  </view>
+</view>

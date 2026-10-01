@@ -1,0 +1,263 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 16rpx 20rpx;
+  box-sizing: border-box;
+}
+
+/* 顶栏 */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 0;
+}
+.who {
+  font-size: 28rpx;
+  font-weight: 800;
+  margin-right: 10rpx;
+}
+.venue {
+  padding: 6rpx 16rpx;
+  font-size: 22rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.08);
+  margin-left: 8rpx;
+  color: rgba(241, 245, 249, 0.75);
+}
+.venue.on {
+  background: linear-gradient(135deg, #6ea8ff, #7ef0c0);
+  color: #0d1220;
+  font-weight: 800;
+}
+
+/* 当日主题 */
+.daybar {
+  padding: 6rpx 4rpx 10rpx;
+}
+.dayname {
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+/* 点阵 */
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  padding: 8rpx 0 12rpx;
+}
+.dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 8rpx;
+  background: rgba(255, 255, 255, 0.2);
+  transition: all 0.2s;
+}
+.dot.aux {
+  background: rgba(255, 255, 255, 0.4);
+}
+.dot.done {
+  width: 26rpx;
+  background: #34d399;
+}
+.dot.cur {
+  width: 48rpx;
+  background: #fbbf24;
+}
+
+/* 舞台 */
+.stage {
+  flex: 1;
+  display: flex;
+}
+.card {
+  flex: 1;
+  padding: 24rpx;
+  display: flex;
+  flex-direction: column;
+}
+.welcome,
+.finale,
+.summary,
+.empty {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.hi {
+  font-size: 40rpx;
+  font-weight: 900;
+  margin-bottom: 12rpx;
+}
+.title {
+  font-size: 34rpx;
+  font-weight: 900;
+  margin: 12rpx 0 4rpx;
+}
+
+/* 标签 */
+.tagpanel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin: 10rpx 0;
+  padding: 12rpx;
+  border-radius: 20rpx;
+  background: rgba(0, 0, 0, 0.35);
+}
+.tag {
+  padding: 8rpx 16rpx;
+  font-size: 22rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.1);
+}
+.tag.on {
+  background: linear-gradient(135deg, #6ea8ff, #7ef0c0);
+  color: #0d1220;
+  font-weight: 800;
+}
+
+/* 升级提醒 */
+.banner {
+  margin: 10rpx 0;
+  padding: 14rpx;
+  border-radius: 18rpx;
+  background: rgba(251, 191, 36, 0.18);
+  border: 1rpx solid rgba(251, 191, 36, 0.45);
+}
+
+/* 组列表 */
+.setlist {
+  flex: 1;
+  margin: 12rpx 0;
+  max-height: 560rpx;
+}
+.setrow {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 10rpx 14rpx;
+  margin-bottom: 10rpx;
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.07);
+}
+.setrow.done {
+  background: rgba(52, 211, 153, 0.18);
+}
+.setno {
+  width: 52rpx;
+  font-size: 22rpx;
+  font-weight: 800;
+  opacity: 0.85;
+}
+.num {
+  width: 108rpx;
+  padding: 6rpx 10rpx;
+  text-align: center;
+  font-size: 26rpx;
+  font-weight: 800;
+  border-radius: 14rpx;
+  background: rgba(0, 0, 0, 0.3);
+}
+.unit {
+  font-size: 20rpx;
+  opacity: 0.6;
+}
+.check {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.12);
+  font-weight: 900;
+  margin-left: auto;
+}
+.check.on {
+  background: linear-gradient(135deg, #34d399, #10b981);
+  color: #06281f;
+}
+
+/* 休息条 */
+.restbar {
+  padding-top: 8rpx;
+}
+.restbar.counting {
+  opacity: 0.95;
+}
+.flex1 {
+  flex: 1;
+}
+.big {
+  font-size: 36rpx;
+  font-weight: 900;
+}
+.ringing {
+  text-align: center;
+  padding: 20rpx;
+}
+
+/* 统计 */
+.statrow {
+  display: flex;
+  gap: 20rpx;
+  margin: 16rpx 0;
+}
+.stat {
+  flex: 1;
+  padding: 18rpx;
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+.bignum {
+  display: block;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+.flatrow {
+  display: flex;
+  justify-content: space-between;
+  padding: 10rpx 12rpx;
+  border-bottom: 1rpx solid rgba(255, 255, 255, 0.08);
+}
+
+/* 响铃遮罩 */
+.alarm-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(6, 20, 14, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+/* 未授权 */
+.locked {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: #0b1020;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 40rpx;
+  text-align: center;
+}
+
+.gold {
+  color: #fbbf24;
+}

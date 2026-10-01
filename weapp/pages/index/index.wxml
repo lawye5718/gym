@@ -1,0 +1,182 @@
+<view class="page safe-bottom">
+
+  <!-- 顶栏：身份 / 场馆 / 入口 -->
+  <view class="topbar">
+    <view class="row">
+      <text class="who">{{profile ? profile.name : user}}</text>
+      <text class="badge">{{isAdmin ? '管理员' : '成员'}}</text>
+    </view>
+    <view class="row">
+      <view
+        wx:for="{{venues}}"
+        wx:key="id"
+        class="venue {{venueMode === item.id ? 'on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="switchVenue"
+      >{{item.name}}</view>
+    </view>
+    <view class="row">
+      <view class="btn tiny" bindtap="goMembers">成员</view>
+      <view class="btn tiny" bindtap="goAudit">审计</view>
+    </view>
+  </view>
+
+  <!-- 当日主题 -->
+  <view class="daybar">
+    <text class="dayname">Day {{day}} · {{dayName}}</text>
+    <text class="tiny dim">{{dayFocus}}</text>
+  </view>
+
+  <!-- 迷你点阵进度条（V2.9.1） -->
+  <view class="stepper" wx:if="{{deck.length > 1}}">
+    <view
+      wx:for="{{deck}}"
+      wx:key="index"
+      class="dot {{cardIdx === index ? 'cur' : ''}} {{item.type === 'exercise' && cardCompletion[index - 1] === 'done' ? 'done' : ''}} {{item.type !== 'exercise' ? 'aux' : ''}}"
+      data-idx="{{index}}"
+      bindtap="goCard"
+    />
+  </view>
+
+  <!-- 牌堆舞台 -->
+  <view class="stage" bindtouchstart="onTouchStart" bindtouchend="onTouchEnd">
+
+    <!-- 无计划（有氧 / 静息日） -->
+    <view wx:if="{{!hasPlan}}" class="card empty">
+      <text class="hi">Day {{day}} · {{dayName}}</text>
+      <text class="tiny dim">{{dayFocus}}</text>
+      <text class="tiny dim">今日为有氧 / 静息日，无器械动作卡</text>
+    </view>
+
+    <!-- ① 欢迎卡 -->
+    <view wx:elif="{{deck[cardIdx].type === 'welcome'}}" class="card welcome">
+      <text class="hi">今天也要稳稳进步 💪</text>
+      <text class="tiny dim">Day {{day}} · {{dayName}}</text>
+      <text class="tiny dim">{{dayFocus}}</text>
+      <text class="tiny dim">ACSM 2026：RIR ≤ 2，离心 2 秒制动，底端停顿 1 秒</text>
+      <view class="giant-btn btn-primary" bindtap="flip" data-d="next">开始训练 ➜</view>
+    </view>
+
+    <!-- ② 动作卡 -->
+    <view wx:elif="{{deck[cardIdx].type === 'exercise'}}" class="card exercise">
+      <view class="row between">
+        <text class="badge">{{cardIdx}}/{{deck.length - 2}} · {{currentExercise.order}}</text>
+        <view class="row">
+          <view class="btn tiny" bindtap="toggleTagPanel">🏷️ 标签 {{tags.length ? '(' + tags.length + ')' : ''}}</view>
+          <view class="btn tiny" bindtap="goAudit">要领</view>
+        </view>
+      </view>
+
+      <!-- 标签浮层 -->
+      <view wx:if="{{showTags}}" class="tagpanel">
+        <view
+          wx:for="{{['⚡1.5s减速停(RIR2)','🛑底部停1秒极稳','🔥末组双起单下','🧤死手模式零抓握']}}"
+          wx:key="*this"
+          class="tag {{tags.indexOf(item) >= 0 ? 'on' : ''}}"
+          data-tag="{{item}}"
+          bindtap="tapTag"
+        >{{item}}</view>
+      </view>
+
+      <text class="title">{{activeVariant.name}}</text>
+      <view class="row between">
+        <text class="tiny dim">{{activeVariant.machineCode}}</text>
+        <text wx:if="{{plateHint}}" class="tiny gold">(单边 {{plateHint}})</text>
+      </view>
+      <view class="row">
+        <text class="tiny dim">💺 {{activeVariant.defaultSeatNote}}</text>
+      </view>
+
+      <!-- 升级提醒 -->
+      <view wx:if="{{banner && banner.type === 'upgrade_ready'}}" class="banner">
+        <text class="tiny">{{banner.title}}</text>
+        <view class="row">
+          <view class="btn btn-gold tiny" data-decision="accepted" bindtap="ackUpgrade">确认升重</view>
+          <view class="btn tiny" data-decision="dismissed" bindtap="ackUpgrade">暂不</view>
+        </view>
+      </view>
+
+      <!-- 组列表 -->
+      <scroll-view scroll-y class="setlist">
+        <view
+          wx:for="{{sets}}"
+          wx:key="setNo"
+          class="setrow {{item.completed ? 'done' : ''}}"
+        >
+          <text class="setno">#{{item.setNo || index + 1}}</text>
+          <input
+            class="num"
+            type="digit"
+            value="{{item.weight}}"
+            data-idx="{{index}}"
+            bindblur="onWeightChange"
+          />
+          <text class="unit">kg</text>
+          <input
+            class="num"
+            type="number"
+            value="{{item.reps}}"
+            data-idx="{{index}}"
+            bindblur="onRepsChange"
+          />
+          <text class="unit">次</text>
+          <view class="check {{item.completed ? 'on' : ''}}" data-idx="{{index}}" bindtap="toggleSetDone">✓</view>
+        </view>
+      </scroll-view>
+
+      <!-- 巨型休息条 -->
+      <view class="restbar {{status === 'counting' ? 'counting' : ''}}">
+        <view wx:if="{{status === 'idle'}}" class="row between">
+          <view class="giant-btn btn-primary flex1" bindtap="startRest">完成本组并开始休息 {{restTotal}}s</view>
+          <view class="btn tiny" bindtap="undoLastSet">撤销</view>
+        </view>
+        <view wx:elif="{{status === 'counting'}}" class="row between">
+          <text class="mono big">{{secondsLeft}}s</text>
+          <view class="btn tiny" bindtap="add15s">+15s</view>
+          <view class="btn tiny" bindtap="stopAlarmAndAdvance">跳过</view>
+        </view>
+        <view wx:else class="ringing">
+          <text class="big">⏰ 休息时间到！</text>
+          <text class="tiny">点击任意处停止响铃并继续</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- ③ 当日清算卡 -->
+    <view wx:elif="{{deck[cardIdx].type === 'summary'}}" class="card summary">
+      <text class="hi">🧾 当日清算</text>
+      <view class="statrow">
+        <view class="stat"><text class="bignum">{{todayStats.done}}/{{todayStats.total}}</text><text class="tiny dim">已完成组数</text></view>
+        <view class="stat"><text class="bignum">{{todayStats.volume}}</text><text class="tiny dim">总容量 kg</text></view>
+      </view>
+      <scroll-view scroll-y class="setlist">
+        <view wx:for="{{flatExercises}}" wx:key="id" class="flatrow">
+          <text class="tiny">{{item.activeVariant.name}}</text>
+          <text class="tiny dim">{{item.activeVariant.sets || item.prescription.sets}}组</text>
+        </view>
+      </scroll-view>
+      <view class="giant-btn btn-primary" bindtap="finishWorkout">完成训练，查看总结 ➜</view>
+      <view class="btn tiny" bindtap="restart">返回首卡</view>
+    </view>
+
+    <!-- ④ 完赛卡 -->
+    <view wx:else class="card finale">
+      <text class="hi">🎉 今日训练完成</text>
+      <text class="tiny dim">完成 {{todayStats.done}} / {{todayStats.total}} 组 · 总容量 {{todayStats.volume}} kg</text>
+      <view class="giant-btn btn-primary" bindtap="restart">开启下一轮 ➜</view>
+    </view>
+  </view>
+
+  <!-- 响铃全屏打断遮罩 -->
+  <view wx:if="{{status === 'ringing'}}" class="alarm-mask" bindtap="stopAlarmAndAdvance">
+    <text class="big">⏰</text>
+    <text class="tiny">点击任意位置停止并继续</text>
+  </view>
+
+  <!-- 未授权 -->
+  <view wx:if="{{!authorized}}" class="locked">
+    <text class="hi">🔒 尚未获得使用权限</text>
+    <text class="tiny dim">请联系管理员 Leo 激活，或前往「成员」页输入邀请码</text>
+    <view class="btn btn-primary" bindtap="goMembers">前往激活</view>
+  </view>
+</view>

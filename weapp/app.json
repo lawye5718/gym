@@ -1,0 +1,18 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/members/members",
+    "pages/audit/audit"
+  ],
+  "window": {
+    "navigationBarTitleText": "八天微循环 · 打卡",
+    "navigationBarBackgroundColor": "#0b1020",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#0b1020",
+    "backgroundTextStyle": "light",
+    "enablePullDownRefresh": false
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}
