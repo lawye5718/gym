@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { THEMES } from './utils/themeConfig'
-import { ALL_EXERCISES, DAY_META, buildDayExercises, flattenDayExercises } from './data/seedPlanData'
+import { ALL_EXERCISES, DAY_META, buildDayExercises } from './data/seedPlanData'
+import { flattenDayExercises } from './utils/deckFlattener'
 import { getSmartPrescription, getVenueExerciseKey } from './utils/overloadEngine'
 import {
   importCustomPlan,
@@ -395,7 +396,7 @@ export default function App() {
       <main
         onTouchStart={handleStageTouchStart}
         onTouchEnd={handleStageTouchEnd}
-        className="flex-1 min-h-0 px-3 pt-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex items-center justify-center relative"
+        className="flex-1 min-h-0 px-3 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-center justify-center relative"
       >
         {!deckCards.length ? (
           <div className="w-full h-full max-w-md">

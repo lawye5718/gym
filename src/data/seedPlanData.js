@@ -1435,30 +1435,9 @@ export function buildDayExercises(user, day, venueMode, customPlan) {
  * V2.8 扁平化：将超级组展开为子动作 A / B 两个独立条目
  * 供「每日清算卡」与「ACSM 周容量统计」使用，避免顶层无 variants 导致报错或漏算
  */
-export function flattenDayExercises(dayExercises, venueMode = 'newGym') {
-  const normalize = (item) => {
-    const v = item.variants?.[venueMode] || item.variants?.newGym || {}
-    return {
-      ...item,
-      activeVariant: {
-        name: v.name || item.order || item.id,
-        machineCode: v.machineCode || '',
-        isPlateLoaded: Boolean(v.isPlateLoaded),
-        defaultSeatNote: v.defaultSeatNote || '标准机位',
-      },
-    }
-  }
-
-  const out = []
-  for (const ex of dayExercises || []) {
-    if (ex?.type === 'superset' && Array.isArray(ex.subExercises)) {
-      ex.subExercises.forEach((sub) => out.push({ ...normalize(sub), parentSupersetId: ex.id }))
-    } else {
-      out.push(normalize(ex))
-    }
-  }
-  return out
-}
+// V2.9：超级组展开逻辑已独立为 utils/deckFlattener.js（清算卡与 ACSM 周容量审计共用）
+// 此处导入后再导出：既保持既有引用向后兼容，又能支撑下方 ALL_FLATTENED_EXERCISES
+import { flattenDayExercises } from '../utils/deckFlattener'
+export { flattenDayExercises }
 
 export const ALL_FLATTENED_EXERCISES = flattenDayExercises(PLAN_LIBRARY)
-
