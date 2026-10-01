@@ -57,16 +57,33 @@ export default function App() {
   /** 附带智能预填：使清算卡在动作尚未打卡时也能直接录入 / 修改每一组 */
   const dayExercisesWithPrefill = useMemo(
     () =>
-      dayExercises.map((ex) => ({
-        ...ex,
-        prefillSets: getSmartPrescription(
-          ex,
-          venueMode,
-          logs,
-          customConfigs[getVenueExerciseKey(ex.id, venueMode)],
-          upgradeAckMap
-        ).prefillSets,
-      })),
+      dayExercises.map((ex) => {
+        if (ex.type === 'superset' && Array.isArray(ex.subExercises)) {
+          return {
+            ...ex,
+            subExercises: ex.subExercises.map((sub) => ({
+              ...sub,
+              prefillSets: getSmartPrescription(
+                sub,
+                venueMode,
+                logs,
+                customConfigs[getVenueExerciseKey(sub.id, venueMode)],
+                upgradeAckMap
+              ).prefillSets,
+            })),
+          }
+        }
+        return {
+          ...ex,
+          prefillSets: getSmartPrescription(
+            ex,
+            venueMode,
+            logs,
+            customConfigs[getVenueExerciseKey(ex.id, venueMode)],
+            upgradeAckMap
+          ).prefillSets,
+        }
+      }),
     [dayExercises, venueMode, logs, customConfigs, upgradeAckMap]
   )
 
@@ -144,7 +161,8 @@ export default function App() {
   const todayStats = useMemo(() => {
     let completedSetsCount = 0
     let totalVolumeKg = 0
-    const totalSetsCount = dayExercises.reduce((sum, ex) => sum + (ex.prescription?.sets || 0), 0)
+    const flattened = flattenDayExercises(dayExercises, venueMode)
+    const totalSetsCount = flattened.reduce((sum, ex) => sum + (ex.prescription?.sets || 0), 0)
     if (todayLog?.exercises) {
       for (const ex of todayLog.exercises) {
         for (const s of ex.sets || []) {
@@ -156,12 +174,24 @@ export default function App() {
       }
     }
     return { completedSetsCount, totalSetsCount, totalVolumeKg: Math.round(totalVolumeKg) }
-  }, [todayLog, dayExercises])
+  }, [todayLog, dayExercises, venueMode])
 
   /** 三色状态灯：未开始(灰) / 进行中(琥珀) / 已完成(翠绿) */
   const cardCompletion = useMemo(
     () =>
       dayExercises.map((ex) => {
+        if (ex.type === 'superset' && Array.isArray(ex.subExercises)) {
+          let total = 0
+          let done = 0
+          for (const sub of ex.subExercises) {
+            const rec = todayLog?.exercises?.find((e) => e.exerciseId === sub.id)
+            total += sub.prescription?.sets || 0
+            done += (rec?.sets || []).filter((s) => s.completed).length
+          }
+          if (total > 0 && done >= total) return 'done'
+          if (done > 0) return 'partial'
+          return 'todo'
+        }
         const rec = todayLog?.exercises?.find((e) => e.exerciseId === ex.id)
         const total = ex.prescription?.sets || 0
         const done = (rec?.sets || []).filter((s) => s.completed).length
@@ -221,38 +251,38 @@ export default function App() {
   /** 超级组：A、B 两个子动作分别独立落库 */
   const handleUpdateSupersetData = (supersetId, setsA, setsB) => {
     const subs = supersetData?.subExercises || currentExercise?.subExercises || []
+    if (!subs.length) return
+    let updatedLogs = logs
     if (subs[0]) {
-      setLogs([
-        ...saveExerciseSessionLog({
-          user: currentUser,
-          day: currentDay,
-          venueMode,
-          cycleNumber: cycleMeta.cycleNumber,
-          exerciseId: subs[0].id,
-          sets: setsA,
-          quickTags: [],
-        }),
-      ])
+      updatedLogs = saveExerciseSessionLog({
+        user: currentUser,
+        day: currentDay,
+        venueMode,
+        cycleNumber: cycleMeta.cycleNumber,
+        exerciseId: subs[0].id,
+        sets: setsA,
+        quickTags: [],
+      })
     }
     if (subs[1]) {
-      setLogs([
-        ...saveExerciseSessionLog({
-          user: currentUser,
-          day: currentDay,
-          venueMode,
-          cycleNumber: cycleMeta.cycleNumber,
-          exerciseId: subs[1].id,
-          sets: setsB,
-          quickTags: [],
-        }),
-      ])
+      updatedLogs = saveExerciseSessionLog({
+        user: currentUser,
+        day: currentDay,
+        venueMode,
+        cycleNumber: cycleMeta.cycleNumber,
+        exerciseId: subs[1].id,
+        sets: setsB,
+        quickTags: [],
+      })
     }
+    setLogs([...updatedLogs])
   }
 
   /** 清算卡：直接修改某一组的重量/次数（未打卡时用预填值起底） */
   const handleUpdateSingleSet = (exerciseId, setIdx, field, val) => {
     const rec = todayLog?.exercises?.find((e) => e.exerciseId === exerciseId)
-    const ex = dayExercisesWithPrefill.find((e) => e.id === exerciseId)
+    const flattened = flattenDayExercises(dayExercisesWithPrefill, venueMode)
+    const ex = flattened.find((e) => e.id === exerciseId)
     const sets = rec?.sets || ex?.prefillSets || []
     if (!sets[setIdx]) return
     const nextSets = sets.map((s, i) => (i === setIdx ? { ...s, [field]: Number(val) } : s))
@@ -262,7 +292,8 @@ export default function App() {
   /** 清算卡：切换某一组完成状态 */
   const handleToggleSetDone = (exerciseId, setIdx) => {
     const rec = todayLog?.exercises?.find((e) => e.exerciseId === exerciseId)
-    const ex = dayExercisesWithPrefill.find((e) => e.id === exerciseId)
+    const flattened = flattenDayExercises(dayExercisesWithPrefill, venueMode)
+    const ex = flattened.find((e) => e.id === exerciseId)
     const sets = rec?.sets || ex?.prefillSets || []
     if (!sets[setIdx]) return
     const nextSets = sets.map((s, i) => (i === setIdx ? { ...s, completed: !s.completed } : s))
@@ -401,8 +432,10 @@ export default function App() {
                   exercise={supersetData}
                   venueMode={venueMode}
                   theme={theme}
-                  cardIndex={safeCardIdx}
-                  totalDeckCards={totalDeckCards}
+                  cardIndex={Math.max(0, safeCardIdx - 1)}
+                  totalExerciseCards={dayExercises.length}
+                  totalDeckCards={dayExercises.length}
+                  onRestStateChange={setIsResting}
                   onSaveCustomConfig={handleSaveCustomConfig}
                   onResetToACSMPlan={handleResetToACSMPlan}
                   onUpdateSupersetData={handleUpdateSupersetData}

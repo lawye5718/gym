@@ -19,7 +19,11 @@ export default function FinaleCard({
       {/* 完赛主视觉 */}
       <div className="relative shrink-0 h-40 bg-black/40">
         <img
-          src={customAvatars?.linda || '/images/linda-avatar.jpg'}
+          src={
+            currentUser === 'leo'
+              ? customAvatars?.leo || '/images/leo-avatar.png'
+              : customAvatars?.linda || '/images/linda-avatar.jpg'
+          }
           alt="完赛"
           className="w-full h-full object-cover opacity-80"
         />

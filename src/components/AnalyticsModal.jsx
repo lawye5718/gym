@@ -16,7 +16,18 @@ const QUICK_TAGS = [
 ]
 
 function nameOf(exerciseId, allPlanItems) {
-  const p = (allPlanItems || []).find((x) => x.id === exerciseId)
+  let p = (allPlanItems || []).find((x) => x.id === exerciseId)
+  if (!p) {
+    for (const item of allPlanItems || []) {
+      if (item.type === 'superset' && Array.isArray(item.subExercises)) {
+        const sub = item.subExercises.find((s) => s.id === exerciseId)
+        if (sub) {
+          p = sub
+          break
+        }
+      }
+    }
+  }
   if (!p) return exerciseId
   return p.variants?.newGym?.name || p.order || exerciseId
 }
@@ -176,13 +187,25 @@ export default function AnalyticsModal({
     [logs, allPlanItems, currentUser, cycleNumber]
   )
 
+  const flattenedPlanItems = useMemo(() => {
+    const list = []
+    for (const p of allPlanItems || []) {
+      if (p.type === 'superset' && Array.isArray(p.subExercises)) {
+        list.push(...p.subExercises)
+      } else {
+        list.push(p)
+      }
+    }
+    return list
+  }, [allPlanItems])
+
   const trendOptions = useMemo(
     () =>
-      (allPlanItems || []).filter(
+      flattenedPlanItems.filter(
         (p) =>
           p.user === currentUser && (p.category === 'compound' || p.category === 'isolation')
       ),
-    [allPlanItems, currentUser]
+    [flattenedPlanItems, currentUser]
   )
 
   const effectiveTrendId = trendId || trendOptions[0]?.id || ''

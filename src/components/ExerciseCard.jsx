@@ -28,6 +28,7 @@ export default function ExerciseCard({
   theme,
   cardIndex,
   totalDeckCards,
+  totalExerciseCards,
   effectiveId,
   onSaveSeatMemory,
   onSaveCustomConfig,
@@ -145,7 +146,7 @@ export default function ExerciseCard({
                 <span
                   className={`px-2 py-0.5 text-[10px] font-black rounded-lg border ${theme.accentBadge}`}
                 >
-                  {cardIndex + 1}/{totalDeckCards} · {exercise.order}
+                  {cardIndex + 1}/{totalDeckCards || totalExerciseCards} · {exercise.order}
                 </span>
 
                 <div className="flex items-center gap-1">

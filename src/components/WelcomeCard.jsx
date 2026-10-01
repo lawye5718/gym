@@ -50,9 +50,9 @@ export default function WelcomeCard({
             <Flame className="w-4 h-4 fill-amber-300" />
             <span>DAY {currentDay} · 核心战术主题</span>
           </div>
-          <h3 className="text-lg font-black text-white mt-1">{meta.name || '核心训练日'}</h3>
+          <h3 className="text-lg font-black text-white mt-1">{meta.name || meta.title || '核心训练日'}</h3>
           <p className="text-xs opacity-85 mt-1 leading-relaxed">
-            {meta.focus || '按高神经放电速度与离心控制完成每组动作，向心变慢即停！'}
+            {meta.focus || meta.sub || '按高神经放电速度与离心控制完成每组动作，向心变慢即停！'}
           </p>
         </div>
 
