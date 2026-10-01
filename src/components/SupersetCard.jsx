@@ -4,6 +4,7 @@ import SwipeNumberControl from './SwipeNumberControl'
 import GiantRestBar from './GiantRestBar'
 import AttachedSettingsCard from './AttachedSettingsCard'
 import ActionCueFlashCard from './ActionCueFlashCard'
+import { calculatePlatesPerSide } from '../utils/overloadEngine'
 
 /**
  * V2.7 超级组上下联动卡片
@@ -17,9 +18,11 @@ export default function SupersetCard({
   theme,
   cardIndex,
   totalDeckCards,
+  totalExerciseCards,
   onSaveCustomConfig,
   onResetToACSMPlan,
   onUpdateSupersetData,
+  onRestStateChange,
   onFlipCard,
 }) {
   const exA = exercise.subExercises?.[0]
@@ -120,6 +123,10 @@ export default function SupersetCard({
 
   const renderHalf = (which, ex, variant, sets) => {
     const isA = which === 'A'
+    const activeWeight = Number(sets[currentRoundIdx]?.weight) || Number(sets[0]?.weight) || 0
+    const plateHint =
+      variant.isPlateLoaded && activeWeight > 0 ? calculatePlatesPerSide(activeWeight / 2) : ''
+
     return (
       <div className={`flex-1 rounded-2xl border p-2 flex flex-col justify-between ${theme.subCardBg}`}>
         <div className="flex items-center justify-between">
@@ -132,7 +139,10 @@ export default function SupersetCard({
               动作 {which}
             </span>
             <h4 className="text-sm font-black mt-0.5 truncate">{variant.name}</h4>
-            <div className="text-[10px] opacity-75 truncate">{variant.machineCode}</div>
+            <div className="text-[10px] opacity-75 truncate">
+              {variant.machineCode}
+              {plateHint && <span className="ml-1 text-amber-300 font-bold">({plateHint})</span>}
+            </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
@@ -205,7 +215,7 @@ export default function SupersetCard({
       <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
         <div className="flex items-center gap-1.5">
           <span className={`px-2 py-0.5 text-[10px] font-black rounded-lg border ${theme.accentBadge}`}>
-            {cardIndex + 1}/{totalDeckCards} · 超级组
+            {cardIndex + 1}/{totalDeckCards || totalExerciseCards} · 超级组
           </span>
           <span className="text-amber-300 text-xs font-black flex items-center gap-0.5">
             <Zap className="w-3.5 h-3.5 fill-amber-300" />
@@ -240,7 +250,7 @@ export default function SupersetCard({
             setActiveFace('workout')
             setActiveCueEx(null)
           }}
-          onRestStateChange={() => {}}
+          onRestStateChange={onRestStateChange}
         />
       </div>
 

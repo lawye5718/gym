@@ -15,18 +15,20 @@ export default function AttachedSettingsCard({
   onReset,
   onBack,
 }) {
+  const variant = exercise.activeVariant || exercise.variants?.[venueMode] || exercise.variants?.newGym
   const { prescription } = exercise
-  const [minReps] = prescription.repRange
-  const defaultSets = customConfig?.sets || prescription.sets
+  const [minReps] = variant?.repRange || prescription.repRange || [8, 12]
+  const defaultSets = customConfig?.sets || variant?.sets || prescription.sets
 
-  const [weight, setWeight] = useState(customConfig?.defaultWeight ?? '')
+  const defaultReps = customConfig?.defaultRepsList || variant?.defaultRepsList
+  const [weight, setWeight] = useState(customConfig?.defaultWeight ?? variant?.defaultWeight ?? '')
   const [sets, setSets] = useState(defaultSets)
   const [repsText, setRepsText] = useState(
-    (customConfig?.defaultRepsList || []).join(',') ||
+    (defaultReps || []).join(',') ||
       Array.from({ length: defaultSets }, () => minReps).join(',')
   )
   const [restSec, setRestSec] = useState(customConfig?.restSeconds || prescription.restSeconds)
-  const [seatNote, setSeatNote] = useState(customConfig?.seatNote || '')
+  const [seatNote, setSeatNote] = useState(customConfig?.seatNote || variant?.defaultSeatNote || '')
   const [saved, setSaved] = useState(false)
 
   const handleSave = () => {
@@ -48,7 +50,19 @@ export default function AttachedSettingsCard({
     setTimeout(() => setSaved(false), 1600)
   }
 
-  const variant = exercise.variants?.[venueMode] || exercise.variants?.newGym
+  const handleReset = () => {
+    const defReps = variant?.defaultRepsList
+    const defSets = variant?.sets || prescription.sets
+    setWeight(variant?.defaultWeight ?? '')
+    setSets(defSets)
+    setRepsText(
+      (defReps || []).join(',') ||
+        Array.from({ length: defSets }, () => minReps).join(',')
+    )
+    setRestSec(prescription.restSeconds)
+    setSeatNote(variant?.defaultSeatNote || '')
+    onReset?.()
+  }
 
   return (
     <div
@@ -138,7 +152,7 @@ export default function AttachedSettingsCard({
         </button>
         <button
           type="button"
-          onClick={onReset}
+          onClick={handleReset}
           className={`px-2.5 py-2.5 rounded-xl border text-[11px] font-bold ${theme.subCardBg}`}
           title="清除自定义，回到 ACSM 八天计划标准"
         >

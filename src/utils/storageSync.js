@@ -5,7 +5,7 @@
  * 升级兼容：首次加载若 V2.5 新键为空，自动从 V1.x 旧键（wava8day.state.v1）
  * 迁移历史训练记录、机位记忆与周期信息，避免训练数据丢失。
  */
-import { getVenueExerciseKey } from './overloadEngine'
+import { getVenueExerciseKey } from './overloadEngine.js'
 
 const STORAGE_KEYS = {
   LOGS: 'acsm2026_workout_logs_v25',
@@ -207,7 +207,18 @@ export function calculateACSMCycleVolume(logs, allPlanItems, user, cycleNumber) 
 
   for (const log of userCycleLogs) {
     for (const ex of log.exercises || []) {
-      const plan = allPlanItems.find((p) => p.id === ex.exerciseId)
+      let plan = allPlanItems.find((p) => p.id === ex.exerciseId)
+      if (!plan) {
+        for (const item of allPlanItems) {
+          if (item.type === 'superset' && Array.isArray(item.subExercises)) {
+            const sub = item.subExercises.find((s) => s.id === ex.exerciseId)
+            if (sub) {
+              plan = sub
+              break
+            }
+          }
+        }
+      }
       // 爆发力热身与肩袖热身不计入有效容量
       if (!plan || plan.category === 'power' || plan.category === 'warmup') continue
       const doneCount = (ex.sets || []).filter((s) => s.completed).length

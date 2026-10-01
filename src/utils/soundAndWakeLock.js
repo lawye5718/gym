@@ -19,6 +19,20 @@ function ensureAudio() {
   }
 }
 
+// 微信浏览器 & iOS 触屏静音解锁：监听首次触摸与 WeixinJSBridgeReady
+if (typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    ensureAudio()
+    window.removeEventListener('touchstart', unlockAudio, true)
+    window.removeEventListener('click', unlockAudio, true)
+  }
+  window.addEventListener('touchstart', unlockAudio, { capture: true, passive: true })
+  window.addEventListener('click', unlockAudio, { capture: true, passive: true })
+  if (typeof document !== 'undefined') {
+    document.addEventListener('WeixinJSBridgeReady', unlockAudio, false)
+  }
+}
+
 /** 播放单个音符 */
 function tone(ctx, freq, startAt, duration, peak = 0.25, type = 'sine') {
   const osc = ctx.createOscillator()

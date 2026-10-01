@@ -1459,3 +1459,6 @@ export function flattenDayExercises(dayExercises, venueMode = 'newGym') {
   }
   return out
 }
+
+export const ALL_FLATTENED_EXERCISES = flattenDayExercises(PLAN_LIBRARY)
+
