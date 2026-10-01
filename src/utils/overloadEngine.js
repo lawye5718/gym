@@ -13,6 +13,34 @@ export function roundToGymStep(weight, step = 2.5) {
   return Math.round(weight / step) * step
 }
 
+/**
+ * V2.9.1 用户画像增重步进策略
+ * 修复：原逻辑对 ≥20kg 一律 +2.5kg，用在女性上肢孤立动作（侧平举/飞鸟/三头下压/后束）
+ *      单次跳跃可达 25%~50%，直接导致动作变形与手腕代偿。
+ *
+ * Leo（男性高阶）：复合动作 ≥20kg → 2.5kg；肩臂孤立 → 1kg；其余 → 1kg
+ * Linda（女性）：下肢复合 → 2.5kg；胸背复合 → 1.25kg；肩臂孤立 → 0.5kg；其余 → 1kg
+ */
+export function getOverloadStep({ user = 'leo', category, muscleGroup, weight = 0 } = {}) {
+  const isLinda = String(user).toLowerCase() === 'linda'
+  const lowerBody = ['quads', 'glutes_hams', 'calves', 'legs'].includes(muscleGroup)
+  const shoulderArm = ['delts', 'delts_side', 'delts_rear', 'arms', 'biceps', 'triceps'].includes(
+    muscleGroup
+  )
+  const isCompound = category === 'compound' || category === 'power'
+
+  if (isLinda) {
+    if (lowerBody && isCompound) return 2.5
+    if (shoulderArm) return 0.5 // 匹配小飞鸟插销微调片 / 挂扣配重片
+    if (isCompound) return 1.25 // 胸背复合
+    return 1
+  }
+
+  if (isCompound && Number(weight) >= 20) return 2.5
+  if (shoulderArm) return 1
+  return 1
+}
+
 /** 挂片机专属：拆解单边标准杠铃片组合 */
 export function calculatePlatesPerSide(weightPerSide) {
   const plates = [20, 15, 10, 5, 2.5, 1.25]
@@ -66,15 +94,38 @@ export function getSmartPrescription(
     customConfig?.updatedAt &&
     (!lastExerciseLog?.updatedAt || customConfig.updatedAt > lastExerciseLog.updatedAt)
 
-  // ── Day 5（85% 扩次）：自动按主日重量折算，无主日记录时用预设默认重量 ──
+  // ── Day 5（85% 扩次）：同源主项回退查找链 ──
+  // V2.9.1 修复：动作拆卡后（如 d1_e2 拆成 d1_e2a 哈克 / d1_e2b 腿举），
+  // 若用户只做了其中一个子动作，旧逻辑会因索引不到主源而直接掉到底线默认重量，
+  // 造成 85% 负荷失真。现按 day5SourceId（支持数组）顺序检索主源 → 并列回退源。
   if (day === 5 && prescription.day5SourceId && !useCustomOverride) {
-    const scopedSourceId = `${prescription.day5SourceId}__${venueMode}`
-    const mainDayLog =
-      findLastLog(scopedSourceId, prescription.day5SourceId, venueMode, allLogs) ||
-      findLastLogAnyVenue(prescription.day5SourceId, allLogs)
+    const targetSourceIds = Array.isArray(prescription.day5SourceId)
+      ? prescription.day5SourceId
+      : [prescription.day5SourceId]
 
-    const rawMainWeight = Number(mainDayLog?.sets?.[0]?.weight) || 0
-    const step = rawMainWeight >= 20 ? 2.5 : 1
+    let rawMainWeight = 0
+    let sourceLogDate = null
+
+    // 顺序查找主源及回退并列源
+    for (const srcId of targetSourceIds) {
+      const scopedSourceId = `${srcId}__${venueMode}`
+      const mainDayLog =
+        findLastLog(scopedSourceId, srcId, venueMode, allLogs) ||
+        findLastLogAnyVenue(srcId, allLogs)
+      if (mainDayLog?.sets?.length) {
+        const validCompleted = mainDayLog.sets.filter((s) => s.completed !== false)
+        rawMainWeight = Number(validCompleted[0]?.weight || mainDayLog.sets[0]?.weight) || 0
+        sourceLogDate = mainDayLog.date
+        if (rawMainWeight > 0) break
+      }
+    }
+
+    const step = getOverloadStep({
+      user: exercise.user,
+      category,
+      muscleGroup: exercise.muscleGroup,
+      weight: rawMainWeight,
+    })
     const targetDay5Weight =
       rawMainWeight > 0
         ? roundToGymStep(rawMainWeight * (category === 'compound' ? 0.85 : 1.0), step)
@@ -100,9 +151,9 @@ export function getSmartPrescription(
           category === 'compound'
             ? `⚡ 85% 扩次模式（今日建议 ${targetDay5Weight}kg）`
             : `🎯 原重巩固模式（今日建议 ${targetDay5Weight}kg）`,
-        message: '向心变慢即停，专注肌肉张力！',
+        message: '专注离心 2 秒制动，向心变慢即停！',
       },
-      lastDate: lastExerciseLog?.date || null,
+      lastDate: sourceLogDate || lastExerciseLog?.date || null,
     }
   }
 
@@ -144,7 +195,13 @@ export function getSmartPrescription(
     const allHitMax = completedSets
       .slice(0, Math.min(3, targetSetsCount))
       .every((s) => Number(s.reps) >= maxReps)
-    const step = topWeight >= 30 ? 2.5 : 1
+    // V2.9.1：改用用户画像步进，避免女性上肢孤立动作一次 +2.5kg 导致动作变形
+    const step = getOverloadStep({
+      user: exercise.user,
+      category,
+      muscleGroup: exercise.muscleGroup,
+      weight: topWeight,
+    })
     const recommendedWeight = roundToGymStep(topWeight + step, step)
 
     if (allHitMax) {

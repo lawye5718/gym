@@ -17,6 +17,7 @@ import {
 } from './utils/storageSync'
 import HeaderSwitcher from './components/HeaderSwitcher'
 import DaySwiper from './components/DaySwiper'
+import DeckStepper from './components/DeckStepper'
 import ExerciseCard from './components/ExerciseCard'
 import SupersetCard from './components/SupersetCard'
 import DailySummaryCard from './components/DailySummaryCard'
@@ -391,6 +392,18 @@ export default function App() {
           setCycleMeta(next)
           localStorage.setItem('acsm2026_cycle_meta_v25', JSON.stringify(next))
         }}
+      />
+
+      {/* V2.9.1：拆卡后牌堆膨胀 → 顶部迷你点阵进度条，支持点按直达 */}
+      <DeckStepper
+        cards={deckCards.map((c, idx) =>
+          c.type === 'exercise'
+            ? { ...c, data: { ...c.data, allCompleted: cardCompletion[idx - 1] === 'done' } }
+            : c
+        )}
+        activeIndex={safeCardIdx}
+        onSelectCard={setActiveCardIdx}
+        theme={theme}
       />
 
       <main

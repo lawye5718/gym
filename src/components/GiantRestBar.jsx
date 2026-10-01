@@ -72,13 +72,21 @@ export default function GiantRestBar({
       }
     }
 
-    timerRef.current = setInterval(tick, 250)
-    document.addEventListener('visibilitychange', tick)
+    timerRef.current = setInterval(tick, 200)
+
+    // V2.9.1：移动端锁屏/切微信后 setInterval 会被系统降频休眠，
+    // 因此切回前台瞬间主动按物理时间戳计算时间差并校正界面状态；
+    // 若已超时，tick() 会立即补发震动与 10 秒响铃，杜绝响铃延后或错过。
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     tick()
 
     return () => {
       clearInterval(timerRef.current)
-      document.removeEventListener('visibilitychange', tick)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status])
