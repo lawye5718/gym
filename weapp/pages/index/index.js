@@ -12,9 +12,12 @@ import { loadAllState } from '../../utils/store.js'
 import {
   saveExerciseSessionLog,
   saveCustomConfig,
+  resetCustomConfig,
   saveSeatMemory,
   saveUpgradeAck,
+  saveCardioOrRest,
   getTodayLog,
+  getCustomPlan,
 } from '../../utils/logs.js'
 import {
   isAuthorized,
@@ -70,6 +73,17 @@ Page({
     todayStats: { done: 0, total: 0, volume: 0 },
     flatExercises: [],
     hasPlan: false,
+    // 动作要领浮层
+    showCue: false,
+    cueScale: 1,
+    // 器械设置卡
+    showSettings: false,
+    settingsForm: { weight: '', sets: 3, repsText: '', restSeconds: 120, seatNote: '' },
+    // 有氧 / 静息日
+    cardioType: 'zone2',
+    cardio: { duration: 35, avgHr: 120, tags: [], hiitRunning: false, phase: 'sprint', left: 240, round: 1 },
+    cardioSaved: null,
+    cardioTags: [],
   },
 
   // ---------- 生命周期 ----------
@@ -119,10 +133,33 @@ Page({
     const st = loadAllState()
     this._state = st
     const { user, venueMode, day } = this.data
-    const dayExercises = buildDayExercises(user, day, venueMode, null)
+    const customPlan = getCustomPlan() // 支持导入的自定义计划
+    const dayExercises = buildDayExercises(user, day, venueMode, customPlan)
+
+    // 有氧 / 静息日类型与体感标签（与 Web 版 CardioPanel 一致）
+    const cardioType = day === 6 ? 'hiit' : day === 7 ? 'rest' : 'zone2'
+    const cardioTags =
+      cardioType === 'hiit'
+        ? ['⚡双腿轻盈正常', '⚠️腿部酸痛需降量']
+        : cardioType === 'rest'
+        ? ['😴睡满 8 小时', '🍚碳水补充到位', '🧘拉伸放松完毕']
+        : ['👃全程鼻呼吸轻松', '🦵冲刷昨日下肢酸痛', '😮‍💨略有吃力但可控']
+    const todayLog = getTodayLog({ user, day, venueMode })
 
     if (!dayExercises.length) {
-      this.setData({ hasPlan: false, deck: [] })
+      this.setData({
+        hasPlan: false,
+        deck: [],
+        cardioType,
+        cardioTags,
+        cardioSaved: todayLog?.cardioSummary || null,
+        cardio: {
+          ...this.data.cardio,
+          duration: todayLog?.cardioSummary?.durationMinutes || 35,
+          avgHr: todayLog?.cardioSummary?.avgHeartRate || 120,
+          tags: todayLog?.cardioSummary?.tags || [],
+        },
+      })
       return
     }
 
@@ -423,5 +460,150 @@ Page({
   restart() {
     this.setData({ cardIdx: 0 })
     this.applyCard()
+  },
+
+  // ---------- ① 动作要领浮层 ----------
+  openCue() {
+    this.setData({ showCue: true, cueScale: 1 })
+  },
+  closeCue() {
+    this.setData({ showCue: false })
+  },
+  zoomCue(e) {
+    const d = Number(e.currentTarget.dataset.d || 0)
+    const s = Math.min(2.5, Math.max(1, Number((this.data.cueScale + d).toFixed(2))))
+    this.setData({ cueScale: s })
+  },
+
+  // ---------- ② 器械设置卡 ----------
+  openSettings() {
+    const ex = this.data.currentExercise
+    if (!ex) return
+    const key = getVenueExerciseKey(ex.id, this.data.venueMode)
+    const cfg = (this._state.customConfigs || {})[key] || {}
+    const v = ex.variants?.[this.data.venueMode] || ex.variants?.newGym || {}
+    const p = ex.prescription || {}
+    this.setData({
+      showSettings: true,
+      settingsForm: {
+        weight: cfg.defaultWeight ?? v.defaultWeight ?? '',
+        sets: cfg.sets || v.sets || p.sets || 3,
+        repsText: (cfg.defaultRepsList || v.defaultRepsList || []).join(','),
+        restSeconds: cfg.restSeconds || p.restSeconds || 120,
+        seatNote: cfg.seatNote || '',
+      },
+    })
+  },
+  closeSettings() {
+    this.setData({ showSettings: false })
+  },
+  onSettingInput(e) {
+    const f = e.currentTarget.dataset.field
+    this.setData({ [`settingsForm.${f}`]: e.detail.value })
+  },
+  saveSettings() {
+    const ex = this.data.currentExercise
+    const f = this.data.settingsForm
+    const repsList = String(f.repsText)
+      .split(/[,，\s]+/)
+      .map((n) => Number(n))
+      .filter((n) => !Number.isNaN(n) && n > 0)
+    const finalSets = Number(f.sets) || ex.prescription.sets
+    const minReps = (ex.prescription.repRange || [10])[0]
+    const cfg = {
+      defaultWeight: Number(f.weight) || 0,
+      sets: finalSets,
+      defaultRepsList: repsList.length
+        ? repsList
+        : Array.from({ length: finalSets }, () => minReps),
+      restSeconds: Number(f.restSeconds) || ex.prescription.restSeconds,
+      seatNote: f.seatNote,
+    }
+    const all = saveCustomConfig(ex.id, this.data.venueMode, cfg)
+    this._state.customConfigs = all
+    this.setData({ showSettings: false, restTotal: cfg.restSeconds })
+    wx.showToast({ title: '已保存设置', icon: 'success' })
+    this.applyCard()
+  },
+  resetSettings() {
+    const ex = this.data.currentExercise
+    const all = resetCustomConfig(ex.id, this.data.venueMode)
+    this._state.customConfigs = all
+    this.setData({ showSettings: false })
+    wx.showToast({ title: '已恢复计划标准', icon: 'success' })
+    this.applyCard()
+  },
+
+  // ---------- ③ 有氧 / 静息日面板 ----------
+  onCardioInput(e) {
+    const f = e.currentTarget.dataset.field
+    this.setData({ [`cardio.${f}`]: Number(e.detail.value) || 0 })
+  },
+  toggleCardioTag(e) {
+    const t = e.currentTarget.dataset.tag
+    const tags = this.data.cardio.tags || []
+    const next = tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t]
+    this.setData({ 'cardio.tags': next })
+  },
+  startHiit() {
+    // 挪威 4x4：冲刺 4 分钟 / 恢复 3 分钟 × 4 轮
+    this.setData({
+      'cardio.hiitRunning': true,
+      'cardio.phase': 'sprint',
+      'cardio.left': 240,
+      'cardio.round': 1,
+    })
+    this._hiit = setInterval(() => this.tickHiit(), 1000)
+  },
+  tickHiit() {
+    const c = this.data.cardio
+    const left = (c.left || 0) - 1
+    if (left > 0) {
+      this.setData({ 'cardio.left': left })
+      return
+    }
+    if (c.phase === 'sprint') {
+      if ((c.round || 1) >= 4) {
+        this.stopHiit()
+        return
+      }
+      this.setData({ 'cardio.phase': 'recovery', 'cardio.left': 180 })
+      device.vibrate()
+    } else {
+      this.setData({
+        'cardio.phase': 'sprint',
+        'cardio.left': 240,
+        'cardio.round': (c.round || 1) + 1,
+      })
+      device.vibrate()
+    }
+  },
+  stopHiit() {
+    clearInterval(this._hiit)
+    this.setData({ 'cardio.hiitRunning': false })
+    device.vibrate()
+  },
+  saveCardio() {
+    const c = this.data.cardio
+    const payload = {
+      completed: true,
+      durationMinutes: Number(c.duration) || 0,
+      avgHeartRate: Number(c.avgHr) || 0,
+      tags: c.tags || [],
+      savedAt: new Date().toTimeString().slice(0, 5),
+    }
+    const { logs } = saveCardioOrRest({
+      user: this.data.user,
+      day: this.data.day,
+      venueMode: this.data.venueMode,
+      cardioData: payload,
+    })
+    this._state.logs = logs
+    this.setData({ cardioSaved: payload })
+    wx.showToast({ title: '已打卡 ✓', icon: 'success' })
+  },
+
+  goSettings() {
+    wx.navigateTo({ url: '/pages/settings/settings' })
   },
 })

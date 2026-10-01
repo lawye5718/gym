@@ -96,3 +96,61 @@ export function getTodayLog({ user, day, venueMode }) {
     (l) => l.date === today && l.user === user && l.day === day && l.venueMode === venueMode
   ) || null
 }
+
+/** 清除某个动作的自定义配置（回到 ACSM 计划标准） */
+export function resetCustomConfig(exerciseId, venue) {
+  const all = get('custom_configs', {})
+  delete all[`${exerciseId}__${venue}`]
+  set('custom_configs', all)
+  return all
+}
+
+/** 自定义头像（base64 字符串） */
+export function saveCustomAvatar(userKey, dataUrl) {
+  const all = get('custom_avatars', {})
+  all[userKey] = dataUrl
+  set('custom_avatars', all)
+  return all
+}
+
+export function resetCustomAvatar(userKey) {
+  const all = get('custom_avatars', {})
+  delete all[userKey]
+  set('custom_avatars', all)
+  return all
+}
+
+/**
+ * 导入自定义训练计划（与 Web 版 storageSync.importCustomPlan 一致）
+ * mode='full'  → 整体替换
+ * mode='patch' → 按 targetUsers / targetDays 局部覆盖后合并
+ */
+export function importCustomPlan(parsed) {
+  const incoming = Array.isArray(parsed?.exercises) ? parsed.exercises : []
+  let nextPlan
+  if (parsed?.mode === 'full') {
+    nextPlan = incoming
+  } else {
+    const users = Array.isArray(parsed?.targetUsers) ? parsed.targetUsers : []
+    const days = Array.isArray(parsed?.targetDays) ? parsed.targetDays : []
+    const base = get('custom_plan', []) || []
+    const kept = (base || []).filter((item) => {
+      const userMatch = users.length === 0 || users.includes(item.user)
+      const dayMatch = days.length === 0 || days.includes(Number(item.day))
+      return !(userMatch && dayMatch)
+    })
+    nextPlan = [...kept, ...incoming]
+  }
+  set('custom_plan', nextPlan)
+  return { updatedCount: incoming.length, plan: nextPlan }
+}
+
+/** 恢复内置 ACSM 2026 默认计划 */
+export function resetCustomPlan() {
+  set('custom_plan', null)
+  return null
+}
+
+export function getCustomPlan() {
+  return get('custom_plan', null)
+}

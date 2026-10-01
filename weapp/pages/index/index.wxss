@@ -261,3 +261,108 @@
 .gold {
   color: #fbbf24;
 }
+
+/* 浮层通用 */
+.mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30rpx;
+  z-index: 500;
+}
+.cuecard,
+.setcard {
+  width: 100%;
+  max-height: 86vh;
+  padding: 26rpx;
+  border-radius: 32rpx;
+  background: rgba(20, 24, 40, 0.98);
+  border: 1rpx solid rgba(255, 255, 255, 0.16);
+  display: flex;
+  flex-direction: column;
+}
+.cuebody {
+  flex: 1;
+  margin-top: 16rpx;
+  max-height: 66vh;
+}
+.setbody {
+  flex: 1;
+  margin: 16rpx 0;
+  max-height: 56vh;
+}
+.cuebox {
+  margin: 14rpx 0;
+  padding: 16rpx;
+  border-radius: 18rpx;
+}
+.cuebox text {
+  display: block;
+}
+.cuebox.rose {
+  background: rgba(244, 63, 94, 0.14);
+  border: 1rpx solid rgba(244, 63, 94, 0.3);
+}
+.cuebox.sky {
+  background: rgba(56, 189, 248, 0.14);
+  border: 1rpx solid rgba(56, 189, 248, 0.3);
+}
+.cuebox.amber {
+  background: rgba(251, 191, 36, 0.14);
+  border: 1rpx solid rgba(251, 191, 36, 0.3);
+}
+.cuebox.indigo {
+  background: rgba(129, 140, 248, 0.14);
+  border: 1rpx solid rgba(129, 140, 248, 0.3);
+}
+.kp {
+  padding: 8rpx 12rpx;
+}
+.field {
+  margin: 14rpx 0;
+}
+.ipt {
+  padding: 14rpx 18rpx;
+  border-radius: 18rpx;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 26rpx;
+  margin-top: 8rpx;
+}
+.tagrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin: 16rpx 0;
+}
+.donebadge {
+  padding: 16rpx;
+  border-radius: 18rpx;
+  background: rgba(52, 211, 153, 0.16);
+  font-size: 22rpx;
+  margin: 12rpx 0;
+}
+.hiitbox {
+  padding: 24rpx;
+  border-radius: 22rpx;
+  background: rgba(239, 68, 68, 0.15);
+  text-align: center;
+  margin: 16rpx 0;
+}
+.hugenum {
+  display: block;
+  font-size: 72rpx;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+.ok {
+  color: #6ee7b7;
+}
+.warn {
+  color: #fbbf24;
+}

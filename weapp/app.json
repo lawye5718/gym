@@ -2,7 +2,8 @@
   "pages": [
     "pages/index/index",
     "pages/members/members",
-    "pages/audit/audit"
+    "pages/audit/audit",
+    "pages/settings/settings"
   ],
   "window": {
     "navigationBarTitleText": "八天微循环 · 打卡",

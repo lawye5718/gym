@@ -1,0 +1,56 @@
+<view class="page safe-bottom">
+  <view class="hi">✨ 训练计划导入 &amp; 自定义头像</view>
+
+  <!-- Tab -->
+  <view class="tabs">
+    <view class="tab {{tab === 'plan' ? 'on' : ''}}" data-tab="plan" bindtap="switchTab">计划导入</view>
+    <view class="tab {{tab === 'avatar' ? 'on' : ''}}" data-tab="avatar" bindtap="switchTab">自定义头像</view>
+  </view>
+
+  <!-- 计划导入 -->
+  <block wx:if="{{tab === 'plan'}}">
+    <view class="card">
+      <text class="tiny dim">粘贴 AI 生成的计划 JSON（支持 patch 局部修改 / full 全量替换）</text>
+      <textarea
+        class="ta"
+        placeholder='{"mode":"patch","targetUsers":["linda"],"targetDays":[3],"exercises":[...]}'
+        value="{{jsonInput}}"
+        bindinput="onJsonInput"
+        maxlength="-1"
+      />
+      <view class="row">
+        <view class="btn tiny" bindtap="pickJsonFile">从聊天选文件</view>
+        <view class="btn tiny" bindtap="copyPrompt">复制 AI Prompt</view>
+      </view>
+      <view class="giant-btn btn-primary" bindtap="applyPlan">应用计划</view>
+      <view class="btn tiny" bindtap="resetPlan">恢复内置 ACSM 2026 计划</view>
+    </view>
+  </block>
+
+  <!-- 头像 -->
+  <block wx:else>
+    <view class="card" wx:for="{{users}}" wx:key="id">
+      <view class="row between">
+        <text class="name">{{item.name}}</text>
+        <image
+          wx:if="{{avatars[item.id]}}"
+          class="avatar"
+          src="{{avatars[item.id]}}"
+          mode="aspectFill"
+        />
+        <view wx:else class="avatar ph">默认</view>
+      </view>
+      <view class="row ops">
+        <view class="btn btn-primary tiny" data-id="{{item.id}}" bindtap="chooseAvatar">更换头像</view>
+        <view class="btn tiny" data-id="{{item.id}}" bindtap="resetAvatar">恢复默认</view>
+      </view>
+    </view>
+    <view class="tips">
+      <text class="tiny dim">头像会被压缩为 256px 后以 Base64 存入本地，避免占用过多存储。</text>
+    </view>
+  </block>
+
+  <view wx:if="{{msg}}" class="msg tiny">{{msg}}</view>
+
+  <view class="btn" bindtap="goBack">返回打卡</view>
+</view>
