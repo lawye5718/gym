@@ -16,6 +16,8 @@ const STORAGE_KEYS = {
   AVATARS: 'acsm2026_custom_avatars_v26',
   CUSTOM_PLAN: 'acsm2026_custom_plan_v26',
   UPGRADE_ACK: 'acsm2026_upgrade_ack_v26',
+  // V3.0 (V6) 新增：红黄绿灯状态机 / 自由器械等效 / 功能性指标 / 热身与恢复打卡
+  V6_STATE: 'acsm2026_v6_state_v30',
 }
 
 /** V1.x 旧存储键（仅用于一次性迁移） */
@@ -41,6 +43,26 @@ function writeJSON(key, value) {
 
 const defaultCycleMeta = { cycleNumber: 1, extraRestDayInserted: false }
 
+/** V3.0 (V6) 状态默认值与读取键 */
+export function defaultV6DayState() {
+  return {
+    statusLight: 'green',
+    equiv: {}, // exerciseId -> 'free' | 'machine'
+    warmupChecked: false,
+    restWalkChecked: false,
+    recovery: { walk: false, stretch: false },
+    recoverySaved: null,
+  }
+}
+
+export function defaultV6State() {
+  return { metrics: { grip: '', balanceSec: '' }, days: {} }
+}
+
+export function v6DayKey(dateStr, user) {
+  return `${dateStr}_${user}`
+}
+
 export function loadAllState() {
   const state = {
     logs: readJSON(STORAGE_KEYS.LOGS, []),
@@ -51,6 +73,8 @@ export function loadAllState() {
     customAvatars: readJSON(STORAGE_KEYS.AVATARS, {}),
     customPlan: readJSON(STORAGE_KEYS.CUSTOM_PLAN, null),
     upgradeAckMap: readJSON(STORAGE_KEYS.UPGRADE_ACK, {}),
+    // V3.0 (V6)：{ metrics:{grip,balanceSec}, days:{ 'yyyy-mm-dd_user': {...} } }
+    v6State: readJSON(STORAGE_KEYS.V6_STATE, null) || defaultV6State(),
   }
 
   // 升级迁移：新键无数据且存在旧键时，从 V1.x 迁移
@@ -418,4 +442,37 @@ export function saveUpgradeAck(ackKey, decision) {
   const next = { ...(state.upgradeAckMap || {}), [ackKey]: decision }
   writeJSON(STORAGE_KEYS.UPGRADE_ACK, next)
   return next
+}
+
+/* ---------- V3.0 (V6) 状态：红黄绿灯 / 等效选择 / 热身与恢复打卡 / 功能指标 ---------- */
+
+/** 读取全量 V6 状态 */
+export function loadV6State() {
+  const state = loadAllState()
+  const base = state.v6State || defaultV6State()
+  return { metrics: { grip: '', balanceSec: '', ...(base.metrics || {}) }, days: { ...(base.days || {}) } }
+}
+
+/** 读取某天某用户的 V6 当日状态（缺省返回默认值） */
+export function getV6DayState(dateStr, user) {
+  const v6 = loadV6State()
+  return { ...defaultV6DayState(), ...(v6.days[v6DayKey(dateStr, user)] || {}) }
+}
+
+/** 写入某天某用户的 V6 当日状态（浅合并 patch） */
+export function saveV6DayState(dateStr, user, patch) {
+  const v6 = loadV6State()
+  const key = v6DayKey(dateStr, user)
+  const merged = { ...defaultV6DayState(), ...(v6.days[key] || {}), ...patch }
+  v6.days[key] = merged
+  writeJSON(STORAGE_KEYS.V6_STATE, v6)
+  return v6
+}
+
+/** 写入功能性防衰指标（全局，跨天保留） */
+export function saveV6Metrics(patch) {
+  const v6 = loadV6State()
+  v6.metrics = { ...v6.metrics, ...patch }
+  writeJSON(STORAGE_KEYS.V6_STATE, v6)
+  return v6
 }

@@ -1,8 +1,10 @@
 import { ArrowDown, Dumbbell, Flame, ShieldCheck } from 'lucide-react'
+import WarmupBalanceCard from './WarmupBalanceCard'
+import V6MetricsPanel from './V6MetricsPanel'
 
 /**
- * V2.7 每日开篇「加油欢迎卡」（牌堆第 0 张）
- * 展示：用户头像、当日战术主题、ACSM 周容量纪律、热身提示与当前场馆
+ * V2.7 / V3.0(V6) 每日开篇「加油欢迎卡」（牌堆第 0 张）
+ * 展示：用户头像、当日战术主题、V6 执行纪律、完整热身打卡、功能性防衰指标与当前场馆
  */
 export default function WelcomeCard({
   currentDay,
@@ -11,6 +13,11 @@ export default function WelcomeCard({
   dayMeta,
   theme,
   customAvatars,
+  statusLight = 'green',
+  warmupChecked,
+  onToggleWarmup,
+  metrics,
+  onMetricChange,
   onStartFirstExercise,
 }) {
   const meta = dayMeta?.[currentDay] || {}
@@ -43,31 +50,52 @@ export default function WelcomeCard({
         </div>
       </div>
 
-      {/* 中部：今日训练科目标签 */}
-      <div className="my-auto space-y-3">
-        <div className={`p-4 rounded-2xl border ${theme.subCardBg}`}>
-          <div className="flex items-center gap-1.5 text-amber-300 text-xs font-black">
-            <Flame className="w-4 h-4 fill-amber-300" />
-            <span>DAY {currentDay} · 核心战术主题</span>
+      {/* 中部：主题 + V6 纪律 + 完整热身打卡 + 功能性指标（可滚动） */}
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar my-2 space-y-2.5">
+        <div className={`p-3.5 rounded-2xl border ${theme.subCardBg}`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-amber-300 text-xs font-black">
+              <Flame className="w-4 h-4 fill-amber-300" />
+              <span>
+                DAY {currentDay} · {meta.title || '核心训练日'}
+              </span>
+            </div>
+            {meta.duration && <span className="text-[10px] opacity-70 shrink-0">⏱ {meta.duration}</span>}
           </div>
-          <h3 className="text-lg font-black text-white mt-1">{meta.name || meta.title || '核心训练日'}</h3>
-          <p className="text-xs opacity-85 mt-1 leading-relaxed">
-            {meta.focus || meta.sub || '按高神经放电速度与离心控制完成每组动作，向心变慢即停！'}
+          <h3 className="text-base font-black text-white mt-1">{meta.sub || '核心训练日'}</h3>
+          <p className="text-[11px] opacity-85 mt-1 leading-relaxed">
+            {meta.focus || '按高神经放电速度与离心控制完成每组动作，向心变慢即停！'}
           </p>
         </div>
 
-        {/* ACSM 2026 增肌纪律提醒 */}
-        <div className="p-3.5 rounded-2xl bg-indigo-500/15 border border-indigo-400/30 text-xs space-y-1.5">
+        {/* V6 四维执行纪律 */}
+        <div className="p-3 rounded-2xl bg-indigo-500/15 border border-indigo-400/30 text-[11px] space-y-1">
           <div className="font-black text-indigo-300 flex items-center gap-1">
             <ShieldCheck className="w-4 h-4" />
-            <span>ACSM 2026 执行纪律</span>
+            <span>V6 四维执行纪律</span>
           </div>
-          <div className="text-[11px] opacity-90 leading-relaxed">
-            • 重点肌群冲击每周期 <b className="text-amber-200">11~12 组有效组</b>；
-            <br />• 离心阶段刹车 2 秒，底部拉伸位停顿 1 秒卸掉反弹力；
-            <br />• 动作间严格执行组间休息长响铃，满血开推。
+          <div className="opacity-90 leading-relaxed">
+            • 四维目标：<b className="text-amber-200">增肌 · 心肺 · 爆发力 · 骨密度平衡</b>；
+            <br />• 每肌群每循环 <b className="text-amber-200">≥12 组</b>；离心刹车 2 秒、底部停 1 秒；
+            <br />• 双阈值铁律：次数到上限再加重 2.5-5%，做不到区间下限立即退回原重量。
           </div>
         </div>
+
+        {/* 完整热身（不可压缩铁律 3） */}
+        <WarmupBalanceCard
+          currentDay={currentDay}
+          theme={theme}
+          checked={warmupChecked}
+          onToggle={onToggleWarmup}
+        />
+
+        {/* 功能性防衰指标追踪 */}
+        <V6MetricsPanel
+          theme={theme}
+          metrics={metrics}
+          currentUser={currentUser}
+          onChange={onMetricChange}
+        />
       </div>
 
       {/* 底部启动大键 */}

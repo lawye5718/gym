@@ -30,6 +30,10 @@ export default function ExerciseCard({
   totalDeckCards,
   totalExerciseCards,
   effectiveId,
+  statusLight = 'green',
+  equivMode = 'machine',
+  currentUser = 'leo',
+  onSelectEquiv,
   onSaveSeatMemory,
   onSaveCustomConfig,
   onResetToACSMPlan,
@@ -44,17 +48,28 @@ export default function ExerciseCard({
   const [cardFace, setCardFace] = useState('workout') // workout | settings
   const [showCueFlash, setShowCueFlash] = useState(false)
   const [restResetToken, setRestResetToken] = useState(0)
+  const [blockedHint, setBlockedHint] = useState(false)
 
   const activeVariant = exercise.variants?.[venueMode] || exercise.variants?.newGym || {}
   const { prescription, tempoGuide } = exercise
   const [minReps, maxReps] = activeVariant.repRange || prescription.repRange || [8, 12]
   const effectiveRestSeconds = customConfig?.restSeconds || prescription.restSeconds || 120
 
+  const v6 = exercise.v6 || {}
+  const isGreen = statusLight === 'green'
+  const isYellow = statusLight === 'yellow'
+  const showEquiv = Boolean(v6.freeEquiv) && isGreen
+  const lindaBlocked = currentUser === 'linda' && !v6.lindaAllowedFree
+  const isFree = isGreen && equivMode === 'free' && Boolean(v6.freeEquiv)
+
   useEffect(() => {
-    setSets(smartData?.prefillSets || [])
+    const base = smartData?.prefillSets || []
+    // 黄灯：容量自动下调 1 组（保留次数、RPE 7-8）
+    const next = isYellow && base.length > 2 ? base.slice(0, Math.max(2, base.length - 1)) : base
+    setSets(next)
     setCardFace('workout')
     setShowTagsPopover(false)
-  }, [smartData, exercise.id, venueMode])
+  }, [smartData, exercise.id, venueMode, statusLight])
 
   const commit = (nextSets, tags = selectedTags) => {
     setSets(nextSets)
@@ -184,6 +199,71 @@ export default function ExerciseCard({
                 </div>
               </div>
 
+              {/* V6：首复合动作爆发向心 + 自由⇋器械等效切换（绿灯生效） */}
+              {(v6.isFirstCompound || v6.freeEquiv) && (
+                <div className="mt-1.5 flex items-center justify-between gap-2">
+                  {v6.isFirstCompound ? (
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-lg border ${
+                        isGreen
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : 'bg-slate-800 text-slate-500 border-slate-700'
+                      }`}
+                    >
+                      {isGreen ? '⚡ 爆发向心：前 2 次最快速度(~1s)' : '匀速向心（黄灯跳过爆发）'}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] opacity-60">器械主项</span>
+                  )}
+
+                  {showEquiv && (
+                    <div className="flex items-center gap-0.5 bg-black/30 p-0.5 rounded-lg border border-white/10 text-[10px] shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onSelectEquiv?.(exercise.id, 'machine')}
+                        className={`px-2 py-0.5 rounded ${!isFree ? 'bg-white/20 font-bold' : 'opacity-60'}`}
+                      >
+                        器械版
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (lindaBlocked) {
+                            setBlockedHint(true)
+                            setTimeout(() => setBlockedHint(false), 2400)
+                            return
+                          }
+                          onSelectEquiv?.(exercise.id, 'free')
+                        }}
+                        className={`px-2 py-0.5 rounded flex items-center gap-1 ${
+                          isFree ? `bg-gradient-to-r ${theme.accentPrimary} font-bold` : 'opacity-60'
+                        } ${lindaBlocked ? 'opacity-30' : ''}`}
+                      >
+                        自由版 {lindaBlocked && <span className="text-[9px]">🚫</span>}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {blockedHint && (
+                <div className="mt-1 px-2 py-1 rounded-lg bg-rose-500/15 border border-rose-500/30 text-[10px] text-rose-300">
+                  【Linda 死手模式拦截】该动作涉及小臂代偿，严禁使用自由版本！请用器械版或金属宽面钩。
+                </div>
+              )}
+
+              {isFree && (
+                <div className="mt-1 px-2 py-1 rounded-lg bg-indigo-500/15 border border-indigo-400/30 text-[10px] text-indigo-200">
+                  自由版需额外加做 1 组约 15 次轻重量过渡组；严守 RPE 8 与 2-3 秒离心控制。
+                </div>
+              )}
+
+              {isYellow && (
+                <div className="mt-1 px-2 py-1 rounded-lg bg-amber-500/15 border border-amber-400/30 text-[10px] text-amber-200">
+                  黄灯保守：已锁定纯器械版、跳过爆发向心，容量下调 1 组，保留次数 RPE 7-8。
+                </div>
+              )}
+
               {/* 弹出式体感标签浮层 */}
               {showTagsPopover && (
                 <div className="mt-1.5 p-2 rounded-2xl bg-slate-950/95 border border-white/20 flex flex-wrap gap-1.5 z-30">
@@ -213,7 +293,9 @@ export default function ExerciseCard({
 
               {/* 主标题与目标处方 */}
               <div className="mt-1.5 flex items-baseline justify-between gap-2">
-                <h2 className="text-lg font-black tracking-tight truncate">{activeVariant.name}</h2>
+                <h2 className="text-lg font-black tracking-tight truncate">
+                  {isFree ? v6.freeEquiv : activeVariant.name}
+                </h2>
                 <span className={`text-xs font-extrabold shrink-0 ${theme.accentText}`}>
                   {sets.length}组 × {minReps}–{maxReps}次
                 </span>
@@ -222,8 +304,8 @@ export default function ExerciseCard({
               {/* 器械编号 + 单边挂片 + 机位记忆（合并单行） */}
               <div className="text-[10px] opacity-85 flex items-center justify-between gap-2 mt-0.5">
                 <span className="truncate">
-                  {activeVariant.machineCode}
-                  {plateHint && <b className="text-amber-300 ml-1.5">(单边 {plateHint})</b>}
+                  {isFree ? `自由版 · RPE ${v6.targetRPE || 8} · 过渡组 1×15` : activeVariant.machineCode}
+                  {!isFree && plateHint && <b className="text-amber-300 ml-1.5">(单边 {plateHint})</b>}
                 </span>
                 <span className="text-amber-200/90 font-medium truncate shrink-0 max-w-[9.5rem]">
                   💺{' '}

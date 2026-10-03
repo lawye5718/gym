@@ -88,8 +88,8 @@ function Field({ label, children }) {
 /* ─────────────── Day 2 · Zone 2 洗刷日 ─────────────── */
 function Zone2Panel({ theme, savedCardio, onSave }) {
   const d = savedCardio || {}
-  const [duration, setDuration] = useState(d.durationMinutes || 35)
-  const [avgHr, setAvgHr] = useState(d.avgHeartRate || 120)
+  const [duration, setDuration] = useState(d.durationMinutes || 45)
+  const [avgHr, setAvgHr] = useState(d.avgHeartRate || 118)
   const [tags, setTags] = useState(d.tags || [])
 
   const inZone = avgHr >= 110 && avgHr <= 130
@@ -97,7 +97,7 @@ function Zone2Panel({ theme, savedCardio, onSave }) {
     setTags((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
 
   return (
-    <Shell theme={theme} title="Zone 2 主动恢复" icon={<Heart size={16} />}>
+    <Shell theme={theme} title="D3 Zone 2 · 坡度快走 + 核心拉伸" icon={<Heart size={16} />}>
       <div className="space-y-2.5">
         {savedCardio?.completed && (
           <DoneBadge
@@ -105,6 +105,16 @@ function Zone2Panel({ theme, savedCardio, onSave }) {
             text={`今日已打卡 · ${savedCardio.durationMinutes} 分钟 / 平均 ${savedCardio.avgHeartRate} bpm${savedCardio.savedAt ? ` · ${savedCardio.savedAt}` : ''}`}
           />
         )}
+
+        {/* V6 执行规程 */}
+        <div className={`rounded-2xl p-2.5 text-[10.5px] leading-relaxed space-y-1 ${theme.subCardBg}`}>
+          <div className="font-black text-emerald-300">🏃 V6 骨密度 + 心肺规程</div>
+          <div>· 跑步机 <b>6-9% 坡度快走 40 分钟</b>（率 110-125 bpm，全程鼻呼吸）</div>
+          <div>· 核心：死虫式 3×12 + 侧平板 3×30 秒，随后全身拉伸 10 分钟</div>
+          <div className="text-amber-300/90">
+            · 骨密度提示：椭圆机为下肢减负设计，骨密度收益低于坡度快走，绝经期/中老年优先快走
+          </div>
+        </div>
 
         <div className="grid grid-cols-2 gap-2">
           <Field label="持续时长（分钟）">
@@ -215,7 +225,7 @@ function HiitPanel({ theme, savedCardio, onSave }) {
     setTags((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
 
   return (
-    <Shell theme={theme} title="绞肉机日 · 4×4 HIIT" icon={<Flame size={16} />}>
+    <Shell theme={theme} title="D6 · 4×4 挪威高强度间歇（HIIT）" icon={<Flame size={16} />}>
       <div className="space-y-2.5">
         {savedCardio?.completed && (
           <DoneBadge
@@ -294,6 +304,13 @@ function HiitPanel({ theme, savedCardio, onSave }) {
           <Wind size={12} /> 4 分钟冲刺 + 3 分钟恢复 × 4 轮，峰值 160–170+ / 恢复 &lt;120
         </div>
 
+        <div className="rounded-2xl p-2.5 text-[10.5px] leading-relaxed bg-rose-500/12 border border-rose-500/30 text-rose-200 space-y-1">
+          <div className="font-black">⚠️ V6 不可压缩铁律</div>
+          <div>· 冲刺段心率需达 85-95% HRmax（VO2 Max 金标准）</div>
+          <div>· 训练结束到下一轮 D1（下肢A）必须满 <b>72 小时</b>物理恢复</div>
+          <div>· 4×4 每循环必须做满 1 次，减载轮亦不例外</div>
+        </div>
+
         <SaveBigBar
           theme={theme}
           label="💾 保存 HIIT 战报"
@@ -313,21 +330,29 @@ function HiitPanel({ theme, savedCardio, onSave }) {
 }
 
 /* ─────────────── Day 7 / 8 · 静息恢复日 ─────────────── */
-function RestPanel({ theme, currentDay, cycleNumber, savedCardio, onSave }) {
+function RestPanel({
+  theme,
+  currentDay,
+  cycleNumber,
+  savedCardio,
+  onSave,
+  restWalkChecked,
+  onToggleRestWalk,
+}) {
   const [tags, setTags] = useState(savedCardio?.tags || [])
   const toggleTag = (t) =>
     setTags((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
   const isFinalDay = currentDay === 8
 
   return (
-    <Shell theme={theme} title={`静息日 · Day ${currentDay}`} icon={<Moon size={16} />}>
+    <Shell theme={theme} title={`主动休整日 · D${currentDay}`} icon={<Moon size={16} />}>
       <div className="h-full flex flex-col justify-between gap-2.5">
         <div className="space-y-2.5">
           <div className="text-center py-2">
-            <div className="text-5xl">😴</div>
-            <div className="text-[13px] font-extrabold mt-1">严禁摸铁 · 超量恢复日</div>
+            <div className="text-5xl">🛌</div>
+            <div className="text-[13px] font-extrabold mt-1">主动休整 · 不摸铁</div>
             <div className="text-[10px] opacity-70 mt-0.5">
-              当前第 {cycleNumber} 轮微循环 · 好好吃饭睡够觉
+              当前第 {cycleNumber} 轮微循环 · 保障夜间深睡，准备进入下一轮 D1
             </div>
           </div>
 
@@ -337,6 +362,27 @@ function RestPanel({ theme, currentDay, cycleNumber, savedCardio, onSave }) {
               text={`今日已打卡${savedCardio.advanceCycle ? ' · 已开启下一轮' : ''}${savedCardio.savedAt ? ` · ${savedCardio.savedAt}` : ''}`}
             />
           )}
+
+          {/* V6：休息日日常化散步打卡 */}
+          <button
+            type="button"
+            onClick={onToggleRestWalk}
+            className={`w-full p-2.5 rounded-2xl border flex items-center justify-between gap-2 text-left transition ${
+              restWalkChecked ? 'bg-emerald-500/15 border-emerald-400/40' : theme.subCardBg
+            }`}
+          >
+            <div>
+              <div className="text-[12px] font-bold">记录今日轻松散步 (20-30 分)</div>
+              <div className="text-[10px] opacity-70">心率 &lt; 100 bpm · 维持每周 4 次以上有氧刺激</div>
+            </div>
+            <span
+              className={`w-5 h-5 rounded-md shrink-0 flex items-center justify-center text-[11px] font-black ${
+                restWalkChecked ? 'bg-emerald-400 text-slate-950' : 'bg-white/10 text-white/40'
+              }`}
+            >
+              ✓
+            </span>
+          </button>
 
           <Field label="恢复体感">
             <TagRow theme={theme} options={REST_TAGS} value={tags} onToggle={toggleTag} />
@@ -379,13 +425,15 @@ export default function CardioPanel({
   cycleNumber,
   savedCardio,
   onSave,
+  restWalkChecked,
+  onToggleRestWalk,
 }) {
   const meta = DAY_META.find((d) => d.day === currentDay)
   const type = meta?.type || 'rest'
 
   if (type === 'hiit')
     return <HiitPanel theme={theme} savedCardio={savedCardio} onSave={onSave} />
-  if (type === 'zone2')
+  if (type === 'cardio' || type === 'zone2')
     return <Zone2Panel theme={theme} savedCardio={savedCardio} onSave={onSave} />
   return (
     <RestPanel
@@ -394,6 +442,8 @@ export default function CardioPanel({
       cycleNumber={cycleNumber}
       savedCardio={savedCardio}
       onSave={onSave}
+      restWalkChecked={restWalkChecked}
+      onToggleRestWalk={onToggleRestWalk}
     />
   )
 }

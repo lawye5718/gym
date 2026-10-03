@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>增肌 8 天循环训练计划 v3 · Leo 与 Linda</title>
+<style>
+  :root{
+    --ink:#161a1f; --sub:#5b6470; --line:#e3e7ec; --bg:#f6f8fa;
+    --card:#ffffff; --accent:#1f4fd8; --accent-soft:#eaf0ff;
+    --hot:#c2410c; --hot-soft:#fff1e7; --ok:#166534; --ok-soft:#e8f5ec;
+    --warn:#92400e; --warn-soft:#fdf3e3; --gold:#a16207; --gold-soft:#fdf6e3;
+    --red:#b91c1c; --red-soft:#fdecec;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Helvetica Neue",Arial,sans-serif;
+    line-height:1.75;font-size:16px;}
+  .wrap{max-width:1000px;margin:0 auto;padding:28px 20px 72px;}
+
+  header.hero{background:linear-gradient(135deg,#1f4fd8 0%,#3b6fe8 55%,#5f8ff0 100%);
+    color:#fff;border-radius:20px;padding:32px 28px;box-shadow:0 8px 28px rgba(31,79,216,.18);}
+  header.hero h1{margin:0 0 8px;font-size:28px;line-height:1.35;letter-spacing:.5px;}
+  header.hero p{margin:0;color:#e6edff;font-size:15px;}
+  .hero-meta{margin-top:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(126px,1fr));gap:12px;}
+  .hero-meta div{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.28);
+    border-radius:12px;padding:12px 14px;}
+  .hero-meta b{display:block;font-size:21px;line-height:1.3;}
+  .hero-meta span{font-size:12.5px;color:#dce6ff;}
+
+  nav.toc{margin:24px 0 8px;background:var(--card);border:1px solid var(--line);
+    border-radius:14px;padding:14px 18px;}
+  nav.toc strong{font-size:14px;color:var(--sub);display:block;margin-bottom:8px;}
+  nav.toc a{display:inline-block;margin:4px 14px 4px 0;color:var(--accent);
+    text-decoration:none;font-size:14.5px;}
+  nav.toc a:hover{text-decoration:underline;}
+
+  section{margin-top:34px;}
+  h2{font-size:21px;margin:0 0 14px;padding-left:12px;border-left:5px solid var(--accent);line-height:1.4;}
+  h3{font-size:17px;margin:24px 0 10px;color:#243048;}
+  p{margin:10px 0;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;}
+  .grid{display:grid;gap:14px;}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(210px,1fr));}
+
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;}
+  .kpi b{display:block;font-size:23px;color:var(--accent);line-height:1.3;}
+  .kpi span{font-size:13.5px;color:var(--sub);}
+
+  table{width:100%;border-collapse:collapse;background:var(--card);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14.5px;}
+  th{background:#243048;color:#fff;text-align:left;padding:10px 11px;font-weight:600;font-size:13.5px;}
+  td{padding:10px 11px;border-top:1px solid var(--line);vertical-align:top;}
+  tbody tr:nth-child(even){background:#fafbfc;}
+  td.num{white-space:nowrap;font-variant-numeric:tabular-nums;}
+  td.score{white-space:nowrap;font-weight:700;color:var(--accent);}
+
+  .tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12.5px;font-weight:600;}
+  .t-ok{background:var(--ok-soft);color:var(--ok);}
+  .t-warn{background:var(--warn-soft);color:var(--warn);}
+  .t-hot{background:var(--hot-soft);color:var(--hot);}
+  .t-blue{background:var(--accent-soft);color:var(--accent);}
+  .t-red{background:var(--red-soft);color:var(--red);}
+
+  .cycle{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:6px;}
+  .day{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 10px;
+    text-align:center;font-size:13px;min-height:112px;}
+  .day .n{display:block;font-size:12px;color:var(--sub);margin-bottom:5px;}
+  .day b{display:block;font-size:14.5px;line-height:1.4;margin-bottom:5px;}
+  .day small{color:var(--sub);font-size:12px;line-height:1.5;}
+  .day.push{border-left:4px solid var(--accent);}
+  .day.leg{border-left:4px solid var(--hot);}
+  .day.cardio{border-left:4px solid #0e7490;}
+  .day.hiit{border-left:4px solid var(--red);background:#fff6f6;}
+  .day.rest{background:#f1f3f6;border-left:4px solid #b6bfcb;}
+
+  .week{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;}
+  .week h4{margin:0 0 10px;font-size:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .week ol{margin:0;padding-left:22px;font-size:14.5px;}
+  .week li{margin:5px 0;}
+  .week li small{color:var(--sub);}
+
+  .note{border-radius:14px;padding:16px 18px;font-size:14.5px;margin-top:14px;}
+  .note.warn{background:var(--warn-soft);border:1px solid #f0dcb4;color:#6b3410;}
+  .note.info{background:var(--accent-soft);border:1px solid #cfdcfb;color:#1c3f9e;}
+  .note.ok{background:var(--ok-soft);border:1px solid #c6e5cf;color:#14532d;}
+  .note.red{background:var(--red-soft);border:1px solid #f3c9c9;color:#8f1414;}
+  .note b{display:block;margin-bottom:6px;}
+
+  ul.plain{margin:8px 0;padding-left:20px;font-size:14.8px;}
+  ul.plain li{margin:6px 0;}
+
+  footer{margin-top:40px;font-size:13px;color:var(--sub);text-align:center;line-height:1.9;}
+
+  @media (max-width:760px){ .cycle{grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:640px){
+    .wrap{padding:18px 14px 56px;}
+    header.hero{padding:24px 20px;border-radius:16px;}
+    header.hero h1{font-size:22px;}
+    h2{font-size:19px;}
+    table{font-size:13.5px;}
+    th,td{padding:8px 7px;}
+    .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  }
+  @media print{ body{background:#fff;} nav.toc{display:none;} .card,.week,table{break-inside:avoid;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>增肌 8 天循环训练计划 v3</h1>
+  <p>Leo 与 Linda · 吸收四条批评后重排 · 力量 4 练 + Zone 2 + 4×4 同期训练完整版</p>
+  <div class="hero-meta">
+    <div><b>56 天</b><span>10-01 至 11-25</span></div>
+    <div><b>7 轮</b><span>每轮 8 天</span></div>
+    <div><b>7 次</b><span>4×4 HIIT（每轮 1 次）</span></div>
+    <div><b>12 组</b><span>每肌群每循环</span></div>
+    <div><b>≤ 68 分钟</b><span>单次含热身</span></div>
+  </div>
+</header>
+
+<nav class="toc">
+  <strong>快速跳转</strong>
+  <a href="#reply">四条批评的回应</a>
+  <a href="#hole">你方案里的两个漏洞</a>
+  <a href="#skeleton">循环骨架</a>
+  <a href="#threshold">双重阈值铁律</a>
+  <a href="#linda">Linda 死手适配</a>
+  <a href="#volume">容量核算</a>
+  <a href="#interfere">干扰效应管理</a>
+</nav>
+
+<section id="reply">
+<h2>四条批评，逐条回应</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>你指出的问题</th><th>判定</th><th>本版怎么处理</th></tr></thead>
+  <tbody>
+    <tr><td>4×4 仅 2 次，VO2 Max 无从提升</td><td><span class="tag t-ok">完全成立</span></td><td>改为每循环 1 次（D6），7 轮共 7 次，折合每周约 0.875 次</td></tr>
+    <tr><td>D4 做 4×4 后 D6 下肢 B 无法恢复</td><td><span class="tag t-ok">成立</span></td><td>把 4×4 移到所有力量之后，后面直接接两天完全休息</td></tr>
+    <tr><td>下肢 B 单次 20 组、臀推接 RDL 腰椎代偿</td><td><span class="tag t-ok">成立</span></td><td>RDL 砍到 3 组并提到当日第一个做；单次下肢降到 19-21 组；砍掉后链日的腿屈伸</td></tr>
+    <tr><td>Linda 助力引体悬空易脱钩、哑铃侧平举必然握紧</td><td><span class="tag t-ok">完全成立</span></td><td>废除助力引体改窄对握高位下拉加金属钩；肩部备用一律改龙门架低位绳索加脚踝扣</td></tr>
+    <tr><td>缺乏加重失败的下限保护</td><td><span class="tag t-ok">成立</span></td><td>建立双区间铁律，做不到严格 2 秒离心的区间下限立即退回原重量</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="note ok">
+  <b>关于 RDL 的顺序，我比你的方案更进一步</b>
+  你指出「连续 4 组臀推再接 4 组 RDL，腰椎静力支撑代偿风险极高」——问题不只在组数，更在顺序：臀推做完腰椎已经疲劳，再接唯一带脊柱负荷的 RDL，极易塌腰。所以修正版不只砍组数，还把 RDL 提到当日<b>第一个</b>动作，在神经最清醒、腰椎未疲劳时完成；之后全是有靠背或俯卧位的支撑动作，腰椎不再承重。
+</div>
+</section>
+
+<section id="hole">
+<h2>但你的新骨架有两处踩了自己的规则</h2>
+<div class="grid g2">
+  <div class="card">
+    <h3 style="margin-top:0;"><span class="tag t-red">漏洞一</span> 4×4 之后只有 1 天休息</h3>
+    <p style="font-size:14.5px;">你的设定是「4×4 以后应该休息两天」。但你的骨架把 4×4 放在 D7，D8 休息，<b>下一轮 D1 就是下肢 A——哈克深蹲 4×8-10，全周期最重的下肢日</b>。中间只隔了 1 个休息日。</p>
+    <p style="font-size:14.5px;margin-bottom:0;">这恰恰是你在问题一里警告过的「CNS 和下肢糖原无法完全恢复」。跨循环看，你把 HIIT 放到了最重腿日的前一天。</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;"><span class="tag t-red">漏洞二</span> 五个肌群同时掉出达标区</h3>
+    <p style="font-size:14.5px;">你的设定是「每个肌群每循环至少 12 组」。但你的新安排里：胸 10、背 10、肩 11、腘绳 10、臀 10。</p>
+    <p style="font-size:14.5px;margin-bottom:0;"><b>10 组 / 8 天 = 8.75 组/周</b>，低于你自己坚持的 ACSM 10 组线。砍 RDL、砍腿屈伸、砍下斜飞鸟之后，容量没有补回来。</p>
+  </div>
+</div>
+<div class="note red">
+  <b>修正方式</b>
+  一、把 4×4 从 D7 移到 <b>D6</b>，D7 + D8 连休两天，下一轮 D1 才是下肢 A——中间隔满两个休息日。二、保留你 RDL 3 组的要求，把缺的组数补在臀推（D1 加到 5 组、D4 加到 4 组）和腿弯举（D1 加到 4 组、D4 加到 5 组）上，五个肌群全部回到每循环 12 组。
+</div>
+<div class="note warn">
+  <b>另外两处需要说清楚</b>
+  一、ACSM 2026 并没有「单次单肌群 8-10 组上限」的表述，这条更接近教练实践而非该声明原文；但你的方向是对的，我按 10 组/肌群/单次做了上限设计。二、提踵移到上肢日解决了下肢日超载，但 6 组/循环 = 5.25 组/周，小腿仍未达 10 组线——小腿恢复极快，我标为「未达标但可接受」，想补就把两次各加到 6 组。
+</div>
+</section>
+
+<section id="skeleton">
+<h2>修正后的 8 天循环骨架</h2>
+<div class="cycle">
+  <div class="day leg"><span class="n">D1</span><b>下肢 A</b><small>股四主导 + 臀</small></div>
+  <div class="day push"><span class="n">D2</span><b>上肢 A</b><small>推优先 + 背宽</small></div>
+  <div class="day cardio"><span class="n">D3</span><b>Zone 2</b><small>夹在两次腿日中间排酸</small></div>
+  <div class="day leg"><span class="n">D4</span><b>下肢 B</b><small>后链：臀与腘绳 + 手臂</small></div>
+  <div class="day push"><span class="n">D5</span><b>上肢 B</b><small>拉优先 + 胸 + 后束</small></div>
+  <div class="day hiit"><span class="n">D6</span><b>4×4 HIIT</b><small>所有力量已结束</small></div>
+  <div class="day rest"><span class="n">D7</span><b>休息</b><small>HIIT 后第一天</small></div>
+  <div class="day rest"><span class="n">D8</span><b>休息</b><small>HIIT 后第二天</small></div>
+</div>
+<div class="note ok">
+  <b>四条硬约束全部校验通过</b>
+  一、Zone 2 在 D3，前一天 D2 是上肢日；4×4 在 D6，前一天 D5 是上肢日——两者都不在腿日次日。二、4×4 之后 D7、D8 连休两天。三、两次腿日间隔 3 天与 4 天；两次上肢日同样间隔 3 天与 4 天。四、4×4 每循环 1 次，7 轮共 7 次。
+</div>
+<h3>四个训练日</h3>
+<div class="grid g2">
+  <div class="week">
+    <h4>D1 下肢 A<span class="tag t-hot">股四主导 + 臀</span></h4>
+    <ol>
+      <li>哈克深蹲机 <small>4×8-10</small></li>
+      <li>挂片倒蹬机（常规位）<small>3×10-12</small></li>
+      <li>坐姿腿屈伸 <small>3×12-15</small></li>
+      <li>腿弯举 <small>4×10-12</small></li>
+      <li>臀推机 INSIGHT <small>5×10-12</small></li>
+    </ol>
+    <p style="margin:10px 0 0;font-size:13.5px;color:#5b6470;">19 组 · 68 分钟（含热身）· 单次股四头 10 组，压在垃圾容量线上</p>
+  </div>
+  <div class="week">
+    <h4>D2 上肢 A<span class="tag t-blue">推优先 + 背宽</span></h4>
+    <ol>
+      <li>挂片坐姿推胸机 <small>4×8-10</small></li>
+      <li>蝴蝶机夹胸 <small>4×12-15</small></li>
+      <li>坐姿推肩机 <small>3×10-12</small></li>
+      <li>高位下拉机 <small>3×10-12</small></li>
+      <li>坐姿划船机 UNIVERSAL <small>3×10-12</small></li>
+      <li>飞鸟机侧平举 <small>4×12-15</small></li>
+    </ol>
+    <p style="margin:10px 0 0;font-size:13.5px;color:#5b6470;">21 组 · 67 分钟 · 单次胸 8 组、肩 7 组、背 6 组</p>
+  </div>
+  <div class="week">
+    <h4>D4 下肢 B<span class="tag t-hot">后链：臀与腘绳 + 手臂</span></h4>
+    <ol>
+      <li>杠铃罗马尼亚硬拉 <small>3×8-10，RIR 2</small></li>
+      <li>臀推机 INSIGHT <small>4×10-12</small></li>
+      <li>挂片倒蹬机（脚偏高偏宽）<small>3×10-12</small></li>
+      <li>腿弯举 <small>5×12-15</small></li>
+      <li>牧师凳弯举 + 三头下压 超级组 <small>各 3×12-15</small></li>
+      <li>站姿提踵 <small>3×15-20</small></li>
+    </ol>
+    <p style="margin:10px 0 0;font-size:13.5px;color:#5b6470;">21 组 · 68 分钟 · RDL 放第一位；后链日不含腿屈伸</p>
+  </div>
+  <div class="week">
+    <h4>D5 上肢 B<span class="tag t-blue">拉优先 + 胸 + 后束</span></h4>
+    <ol>
+      <li>高位下拉机 <small>4×8-10</small></li>
+      <li>挂片坐姿划船机（胸垫）<small>3×10-12</small></li>
+      <li>水平卧推机 <small>4×8-10</small></li>
+      <li>飞鸟机俯身侧平举 <small>5×12-15</small></li>
+      <li>牧师凳弯举 + 三头下压 超级组 <small>各 3×12-15</small></li>
+      <li>倒蹬机提踵 <small>3×15-20</small></li>
+    </ol>
+    <p style="margin:10px 0 0;font-size:13.5px;color:#5b6470;">25 组 · 66 分钟 · 单次背 7 组、后束 5 组</p>
+  </div>
+</div>
+</section>
+
+<section id="threshold">
+<h2>双重阈值铁律</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>动作类别</th><th>包含动作</th><th>次数区间</th><th>升级条件</th><th>回退条件</th></tr></thead>
+  <tbody>
+    <tr><td>大肌群复合</td><td>哈克、倒蹬、腿屈伸、臀推、RDL、推胸、卧推机、高位下拉、两台划船</td><td class="num">8-12 次</td><td>连续两次在次数上限完成且 RPE 低于 8</td><td><b>做不到「严格 2 秒离心」的 8 次</b>，或出现向心借力、离心砸下，立即退回原重量</td></tr>
+    <tr><td>伤肩风险动作</td><td>坐姿推肩机、蝴蝶机夹胸、飞鸟侧平举、飞鸟俯身侧平举</td><td class="num">10-15 次</td><td>连续两次做到 15 次且 RPE 低于 8，才加 2.5%</td><td>做不到 10 次，或出现耸肩、肩前移代偿，立即退回；<b>小肌群宁可做满 15 次也不轻易加重</b></td></tr>
+    <tr><td>手臂与小腿</td><td>牧师凳弯举、三头下压、站姿提踵、倒蹬机提踵</td><td class="num">12-20 次</td><td>连续两次做到 20 次且 RPE 低于 8</td><td>做不到 12 次，或出现甩臂、弹震式起落，退回原重量</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="note info">
+  <b>执行细则</b>
+  每次只动一个变量——先把次数加到区间上限，次数到顶才加重量 2.5-5%。杠铃 RDL 额外执行 RIR 2，任何时候都不做 RIR 0。<b>加重后第一次训练必须主动放慢离心至 2 秒以上做动作检查</b>，确认能稳住再恢复正常节奏。
+</div>
+<h3>单次单肌群组数上限</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th>训练日</th><th>单肌群最高组数</th><th>具体构成</th><th>是否在上限内</th></tr></thead>
+  <tbody>
+    <tr><td>D1 下肢 A</td><td class="num">股四头 10 组</td><td>哈克 4 + 倒蹬 3 + 腿屈伸 3</td><td><span class="tag t-warn">在上限 10 组线上</span></td></tr>
+    <tr><td>D2 上肢 A</td><td class="num">胸 8 组</td><td>挂片推胸 4 + 蝴蝶机 4</td><td><span class="tag t-ok">在上限内</span></td></tr>
+    <tr><td>D4 下肢 B</td><td class="num">腘绳 8 组 / 臀 7 组</td><td>RDL 3 + 腿弯举 5；RDL 3 + 臀推 4</td><td><span class="tag t-ok">在上限内</span></td></tr>
+    <tr><td>D5 上肢 B</td><td class="num">背 7 组</td><td>高位下拉 4 + 挂片划船 3</td><td><span class="tag t-ok">在上限内</span></td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+<section id="linda">
+<h2>Linda 死手适配</h2>
+<div class="note red">
+  <b>判断标准只有一条</b>
+  如果去掉握力这个动作就做不了，那它就不该出现在 Linda 的计划里。视大拇指与手掌为已截肢状态，任何需要「握紧」才能完成的动作一律替换。
+</div>
+<div class="scroll">
+<table>
+  <thead><tr><th>训练日</th><th>动作</th><th>Linda 执行方式</th><th>挂载方式</th><th>若不可用的替代</th></tr></thead>
+  <tbody>
+    <tr><td>D2</td><td>高位下拉机</td><td>改为窄握或对握</td><td>金属宽面钩挂直杆外侧</td><td>无替代，本机最适合死手模式</td></tr>
+    <tr><td>D2</td><td>坐姿划船机 UNIVERSAL</td><td>先确认是否有胸垫</td><td>有胸垫用金属钩；无胸垫换挂片款</td><td>挂片坐姿划船机（同为 8.2，可完全替代）</td></tr>
+    <tr><td>D2</td><td>蝴蝶机夹胸</td><td>肘部推挡板，手掌完全悬空</td><td>无需挂载，本机天然零抓握</td><td>多功能飞鸟下斜飞鸟</td></tr>
+    <tr><td>D2</td><td>飞鸟机侧平举</td><td>靠垫固定躯干，手腕套扣发力</td><td>脚踝扣套在手腕上</td><td>龙门架低位绳索侧平举（7.6 分）</td></tr>
+    <tr><td>D4</td><td>杠铃罗马尼亚硬拉</td><td>金属钩连接杆</td><td>金属宽面钩连接杆</td><td>不用钩则改腿弯举加到 6 组</td></tr>
+    <tr><td>D4 / D5</td><td>牧师凳弯举</td><td>金属钩或脚踝扣</td><td>脚踝扣套手腕</td><td>龙门架二头弯举（7.6 分）</td></tr>
+    <tr><td>D5</td><td>挂片坐姿划船机</td><td>胸垫顶死，腰椎剪切力为零</td><td>金属钩挂把手</td><td>坐姿划船机 UNIVERSAL</td></tr>
+    <tr><td>D5</td><td>飞鸟机俯身侧平举</td><td>胸贴靠垫，手腕套扣</td><td>脚踝扣套手腕</td><td>龙门架低位绳索侧平举改俯身版</td></tr>
+  </tbody>
+</table>
+</div>
+<h3>明令禁止清单</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th>禁止动作</th><th>原因</th><th>替代动作</th></tr></thead>
+  <tbody>
+    <tr><td>助力引体机</td><td>身体悬空，金属钩在晃动中极易滑脱，脱钩即失控</td><td>高位下拉机窄对握加金属钩（8.3 分）</td></tr>
+    <tr><td>哑铃侧平举</td><td>拿哑铃必然握紧，小臂屈肌一发力，力量传导链立刻让斜方肌上提代偿</td><td>龙门架低位绳索侧平举加脚踝扣（7.6 分）</td></tr>
+    <tr><td>哑铃罗马尼亚硬拉</td><td>需握哑铃，双侧负重对腰椎稳定性要求更高</td><td>腿弯举加组，或用金属钩做杠铃 RDL</td></tr>
+    <tr><td>杠铃卧推（举重台）</td><td>需握杠且需人保护，脱手风险不可控</td><td>挂片坐姿推胸机或水平卧推机</td></tr>
+    <tr><td>史密斯机杠铃臀推</td><td>需握杠，且布置耗时</td><td>臀推机 INSIGHT（8.8 分，双手仅虚搭平衡）</td></tr>
+  </tbody>
+</table>
+</div>
+<p style="font-size:14.5px;color:#5b6470;">Leo 不受以上限制。Leo 在 D5 可用助力引体机（7.9 分）替换高位下拉机（8.3 分），分差 0.4 属可互换范围；但必须充分沉肩，肩有不适立即换回高位下拉机。下肢全部动作不涉及上肢抓握，两人完全一致。</p>
+</section>
+
+<section id="volume">
+<h2>每循环容量核算</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>肌群</th><th>D1</th><th>D2</th><th>D4</th><th>D5</th><th>每循环</th><th>折合每周</th><th>判定</th><th>对比你的方案</th></tr></thead>
+  <tbody>
+    <tr><td>胸</td><td class="num">—</td><td class="num">8</td><td class="num">—</td><td class="num">4</td><td class="num"><b>12</b></td><td class="num">10.5</td><td><span class="tag t-ok">达标</span></td><td>你的方案 10 组，补回 2 组</td></tr>
+    <tr><td>背</td><td class="num">—</td><td class="num">6</td><td class="num">—</td><td class="num">7</td><td class="num"><b>13</b></td><td class="num">11.4</td><td><span class="tag t-ok">达标</span></td><td>你的方案 10 组，补回 3 组</td></tr>
+    <tr><td>三角肌</td><td class="num">—</td><td class="num">7</td><td class="num">—</td><td class="num">5</td><td class="num"><b>12</b></td><td class="num">10.5</td><td><span class="tag t-ok">达标</span></td><td>前束 3、中束 4、后束 5</td></tr>
+    <tr><td>肱二头肌</td><td class="num">—</td><td class="num">—</td><td class="num">3</td><td class="num">3</td><td class="num">6 直接</td><td class="num">约 9.9</td><td><span class="tag t-ok">达标</span></td><td>含背部 13 组的协同刺激</td></tr>
+    <tr><td>肱三头肌</td><td class="num">—</td><td class="num">—</td><td class="num">3</td><td class="num">3</td><td class="num">6 直接</td><td class="num">约 10.5</td><td><span class="tag t-ok">达标</span></td><td>含胸 12 组与推肩 3 组的协同</td></tr>
+    <tr><td>股四头肌</td><td class="num">10</td><td class="num">—</td><td class="num">3</td><td class="num">—</td><td class="num"><b>13</b></td><td class="num">11.4</td><td><span class="tag t-ok">达标</span></td><td>单次最高 10 组</td></tr>
+    <tr><td>腘绳肌</td><td class="num">4</td><td class="num">—</td><td class="num">8</td><td class="num">—</td><td class="num"><b>12</b></td><td class="num">10.5</td><td><span class="tag t-ok">达标</span></td><td>你的方案 10 组，靠腿弯举各加 1 组</td></tr>
+    <tr><td>臀大肌</td><td class="num">5</td><td class="num">—</td><td class="num">7</td><td class="num">—</td><td class="num"><b>12</b></td><td class="num">10.5</td><td><span class="tag t-ok">达标</span></td><td>你的方案 10 组，靠臀推各加 1 组</td></tr>
+    <tr><td>小腿</td><td class="num">—</td><td class="num">—</td><td class="num">3</td><td class="num">3</td><td class="num">6</td><td class="num">5.25</td><td><span class="tag t-warn">未达标</span></td><td>辅助肌群，想补就把两次各加到 6 组</td></tr>
+  </tbody>
+</table>
+</div>
+<p style="font-size:14px;color:#5b6470;">计数规则：一个动作只计入它的主要目标肌群一次。杠铃 RDL 是髋主导动作，同时计入腘绳肌与臀大肌各一次。挂片倒蹬高位脚位对臀有协同，但本表不计入臀的组数内，属保守算法。减载轮（轮 3、轮 6）容量按设计下降，不计入本达标判定。</p>
+<h3>单次时长与组数</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th>训练日</th><th>总组数</th><th>纯训练时长</th><th>含 10 分钟热身</th><th>是否在 60-70 分钟内</th></tr></thead>
+  <tbody>
+    <tr><td>D1 下肢 A</td><td class="num">19 组</td><td class="num">58 分钟</td><td class="num">68 分钟</td><td><span class="tag t-ok">是</span></td></tr>
+    <tr><td>D2 上肢 A</td><td class="num">21 组</td><td class="num">57 分钟</td><td class="num">67 分钟</td><td><span class="tag t-ok">是</span></td></tr>
+    <tr><td>D4 下肢 B</td><td class="num">21 组</td><td class="num">58 分钟</td><td class="num">68 分钟</td><td><span class="tag t-ok">是</span></td></tr>
+    <tr><td>D5 上肢 B</td><td class="num">25 组</td><td class="num">56 分钟</td><td class="num">66 分钟</td><td><span class="tag t-ok">是</span></td></tr>
+  </tbody>
+</table>
+</div>
+<p style="font-size:14px;color:#5b6470;">省时间的两处设计：手臂做成超级组不另计休息；侧平举与提踵在同一器械区顺接，减少换场。组数摊得比你原方案更平（19/21/21/25 对比 16/20/14/23）。</p>
+</section>
+
+<section id="interfere">
+<h2>同期训练的干扰效应管理</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th>干扰来源</th><th>表现</th><th>本计划的规避方式</th></tr></thead>
+  <tbody>
+    <tr><td>高强度有氧后的中枢疲劳</td><td>4×4 后 24-48 小时内力量表现下降、深蹲掉重量</td><td>4×4 固定在 D6，后面接 D7、D8 两天完全休息，下一轮 D1 才做最重的哈克深蹲</td></tr>
+    <tr><td>高强度有氧后的糖原耗竭</td><td>下肢在后续腿日提前力竭、动作变形</td><td>4×4 后两天不做任何训练，且这两天正常补足碳水</td></tr>
+    <tr><td>低强度有氧的位置</td><td>Zone 2 强度低，基本不产生干扰，反而促进恢复</td><td>放在 D3，正好夹在 D1 与 D4 两次腿日中间做排酸与毛细血管建设</td></tr>
+    <tr><td>累积疲劳掩盖真实容量</td><td>连续多轮后力量停滞，误以为容量不够</td><td>每 3 轮安排一次减载（轮 3、轮 6），力量组数打 6 折，有氧照做</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="note warn">
+  <b>减载轮只减力量不减有氧</b>
+  4×4 每循环 1 次是提升 VO2 Max 的主线，减载周照做——当天力量已经打折，恢复压力可控。但若某轮出现睡眠持续变差或连续掉重量，把该轮的 4×4 降级为 Zone 2，不要硬扛。
+</div>
+<h3>7 轮的阶段安排</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th>轮次</th><th>日期范围</th><th>定位</th><th>要点</th></tr></thead>
+  <tbody>
+    <tr><td>轮 1</td><td class="num">10-01 至 10-08</td><td><span class="tag t-blue">基准轮</span></td><td>满组数执行，RPE 7-8，只记重量不加码</td></tr>
+    <tr><td>轮 2</td><td class="num">10-09 至 10-16</td><td><span class="tag t-blue">容量推进</span></td><td>RPE 提到 8-9，先把次数加到区间上限</td></tr>
+    <tr><td>轮 3</td><td class="num">10-17 至 10-24</td><td><span class="tag t-warn">减载轮</span></td><td>力量组数打 6 折、重量保持；Zone 2 与 4×4 照做</td></tr>
+    <tr><td>轮 4</td><td class="num">10-25 至 11-01</td><td><span class="tag t-blue">容量推进</span></td><td>恢复满容量，主项继续加重</td></tr>
+    <tr><td>轮 5</td><td class="num">11-02 至 11-09</td><td><span class="tag t-hot">容量峰值</span></td><td>周容量达到 8 周最高</td></tr>
+    <tr><td>轮 6</td><td class="num">11-10 至 11-17</td><td><span class="tag t-warn">减载轮</span></td><td>力量组数打 6 折；Zone 2 与 4×4 照做</td></tr>
+    <tr><td>轮 7</td><td class="num">11-18 至 11-25</td><td><span class="tag t-hot">强度推进与复测</span></td><td>主项次数压到区间下限并加重；11-25 复测围度与主项 8RM</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+
+<footer>
+  增肌 8 天循环训练计划 v3 · 2026-10-01 至 2026-11-25 · 依据 ACSM 2026 抗阻训练立场声明（Med Sci Sports Exerc, 2026;58(4):851-872）<br>
+  详细的逐日动作、组次、RPE、完成标准与记录字段，请在配套的表格文件中查看与填写。
+</footer>
+
+</div>
+</body>
+</html>

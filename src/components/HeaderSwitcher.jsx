@@ -1,4 +1,4 @@
-import { BarChart3, ClipboardList, Receipt } from 'lucide-react'
+import { BarChart3, BookMarked, ClipboardList, Receipt } from 'lucide-react'
 import { THEMES } from '../utils/themeConfig'
 import { USERS, VENUE_MODES } from '../data/seedPlanData'
 
@@ -15,6 +15,7 @@ export default function HeaderSwitcher({
   onOpenAnalytics,
   onOpenPlanSettings,
   onOpenDailySummary,
+  onOpenMemo,
 }) {
   const theme = THEMES[currentUser] || THEMES.leo
 
@@ -54,6 +55,15 @@ export default function HeaderSwitcher({
           >
             <Receipt size={14} />
             清算
+          </button>
+          <button
+            type="button"
+            onClick={onOpenMemo}
+            className="flex items-center gap-1 px-2 py-1.5 rounded-lg border text-[11px] font-bold bg-amber-500/15 border-amber-500/40 text-amber-300"
+            title="V6 备忘智库（器械等效 / 死手守则 / 骨密度 / 功能指标 / 铁律）"
+          >
+            <BookMarked size={14} />
+            备忘
           </button>
           <button
             type="button"

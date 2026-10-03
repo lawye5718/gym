@@ -4,8 +4,10 @@ import { ALL_EXERCISES, DAY_META, buildDayExercises } from './data/seedPlanData'
 import { flattenDayExercises } from './utils/deckFlattener'
 import { getSmartPrescription, getVenueExerciseKey } from './utils/overloadEngine'
 import {
+  defaultV6DayState,
   importCustomPlan,
   loadAllState,
+  loadV6State,
   resetCustomAvatar,
   resetCustomExerciseConfig,
   resetCustomPlan,
@@ -14,6 +16,9 @@ import {
   saveCustomExerciseConfig,
   saveExerciseSessionLog,
   saveUpgradeAck,
+  saveV6DayState,
+  saveV6Metrics,
+  v6DayKey,
 } from './utils/storageSync'
 import HeaderSwitcher from './components/HeaderSwitcher'
 import DaySwiper from './components/DaySwiper'
@@ -26,6 +31,9 @@ import FinaleCard from './components/FinaleCard'
 import CardioPanel from './components/CardioPanel'
 import AnalyticsModal from './components/AnalyticsModal'
 import PlanAndAvatarModal from './components/PlanAndAvatarModal'
+import V6StatusLight from './components/V6StatusLight'
+import V6RecoveryCard from './components/V6RecoveryCard'
+import V6MemoDrawer from './components/V6MemoDrawer'
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
@@ -48,8 +56,32 @@ export default function App() {
   const [showAnalytics, setShowAnalytics] = useState(false)
   const [showPlanSettings, setShowPlanSettings] = useState(false)
   const [isResting, setIsResting] = useState(false)
+  // V3.0 (V6)：红黄绿灯状态机 / 自由器械等效 / 备忘智库 / 功能性指标 / 恢复打卡
+  const [v6State, setV6State] = useState(() => loadV6State())
+  const [showMemo, setShowMemo] = useState(false)
 
   const theme = THEMES[currentUser]
+
+  const todayKey = todayStr()
+  const v6Day = useMemo(
+    () => ({ ...defaultV6DayState(), ...(v6State.days[v6DayKey(todayKey, currentUser)] || {}) }),
+    [v6State, currentUser, todayKey]
+  )
+  const statusLight = v6Day.statusLight || 'green'
+
+  const patchV6Day = useCallback(
+    (patch) => setV6State(saveV6DayState(todayKey, currentUser, patch)),
+    [todayKey, currentUser]
+  )
+  const handleSelectEquiv = (exerciseId, mode) =>
+    patchV6Day({ equiv: { ...(v6Day.equiv || {}), [exerciseId]: mode } })
+  const handleToggleWarmup = () => patchV6Day({ warmupChecked: !v6Day.warmupChecked })
+  const handleToggleRestWalk = () => patchV6Day({ restWalkChecked: !v6Day.restWalkChecked })
+  const handleToggleRecovery = (k) =>
+    patchV6Day({ recovery: { ...(v6Day.recovery || {}), [k]: !(v6Day.recovery || {})[k] } })
+  const handleSaveRecovery = () =>
+    patchV6Day({ recoverySaved: { savedAt: new Date().toTimeString().slice(0, 5) } })
+  const handleMetricChange = (k, val) => setV6State(saveV6Metrics({ [k]: val }))
 
   const dayExercises = useMemo(
     () => buildDayExercises(currentUser, currentDay, venueMode, customPlan),
@@ -209,8 +241,17 @@ export default function App() {
   const currentAltId = currentExercise
     ? altSelections[currentExercise.id] || currentExercise.activeAltId
     : null
-  const currentEffectiveId =
+  // V6：绿灯 + 自由版 → 独立存储键（重量/次数与器械版互不串台）
+  const currentEquiv =
+    currentExercise && statusLight === 'green' && v6Day.equiv?.[currentExercise.id] === 'free'
+      ? 'free'
+      : 'machine'
+  const baseEffectiveId =
     currentExercise && currentAltId ? `${currentExercise.id}::${currentAltId}` : currentExercise?.id
+  const currentEffectiveId =
+    currentEquiv === 'free' && currentExercise?.v6?.freeEquiv
+      ? `${baseEffectiveId}::free`
+      : baseEffectiveId
   const currentScopedKey = currentEffectiveId ? getVenueExerciseKey(currentEffectiveId, venueMode) : ''
 
   const currentSmartData = useMemo(() => {
@@ -342,7 +383,14 @@ export default function App() {
   const dayMetaMap = useMemo(() => {
     const m = {}
     DAY_META.forEach((d) => {
-      m[d.day] = { name: d.title, focus: d.sub, emoji: d.emoji }
+      m[d.day] = {
+        name: d.title,
+        title: d.title,
+        sub: d.sub,
+        focus: d.focus || d.sub,
+        emoji: d.emoji,
+        duration: d.duration,
+      }
     })
     return m
   }, [])
@@ -376,6 +424,7 @@ export default function App() {
         onOpenAnalytics={() => setShowAnalytics(true)}
         onOpenPlanSettings={() => setShowPlanSettings(true)}
         onOpenDailySummary={() => setActiveCardIdx(summaryIdx)}
+        onOpenMemo={() => setShowMemo(true)}
       />
 
       <DaySwiper
@@ -392,6 +441,13 @@ export default function App() {
           setCycleMeta(next)
           localStorage.setItem('acsm2026_cycle_meta_v25', JSON.stringify(next))
         }}
+      />
+
+      {/* V3.0 (V6)：红黄绿灯状态机常驻条 */}
+      <V6StatusLight
+        statusLight={statusLight}
+        onChange={(k) => patchV6Day({ statusLight: k })}
+        theme={theme}
       />
 
       {/* V2.9.1：拆卡后牌堆膨胀 → 顶部迷你点阵进度条，支持点按直达 */}
@@ -411,7 +467,17 @@ export default function App() {
         onTouchEnd={handleStageTouchEnd}
         className="flex-1 min-h-0 px-3 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-center justify-center relative"
       >
-        {!deckCards.length ? (
+        {statusLight === 'red' ? (
+          <div className="w-full h-full max-w-md">
+            <V6RecoveryCard
+              theme={theme}
+              record={v6Day.recovery}
+              saved={v6Day.recoverySaved}
+              onToggle={handleToggleRecovery}
+              onSave={handleSaveRecovery}
+            />
+          </div>
+        ) : !deckCards.length ? (
           <div className="w-full h-full max-w-md">
             <CardioPanel
               currentDay={currentDay}
@@ -421,6 +487,8 @@ export default function App() {
               cycleNumber={cycleMeta.cycleNumber}
               savedCardio={todayLog?.cardioSummary || null}
               onSave={handleSaveCardio}
+              restWalkChecked={v6Day.restWalkChecked}
+              onToggleRestWalk={handleToggleRestWalk}
             />
           </div>
         ) : (
@@ -435,6 +503,11 @@ export default function App() {
                   dayMeta={dayMetaMap}
                   theme={theme}
                   customAvatars={customAvatars}
+                  statusLight={statusLight}
+                  warmupChecked={v6Day.warmupChecked}
+                  onToggleWarmup={handleToggleWarmup}
+                  metrics={v6State.metrics}
+                  onMetricChange={handleMetricChange}
                   onStartFirstExercise={() => handleFlipCard('next')}
                 />
               )}
@@ -471,6 +544,10 @@ export default function App() {
                   totalExerciseCards={dayExercises.length}
                   upgradeAckMap={upgradeAckMap}
                   effectiveId={currentEffectiveId}
+                  statusLight={statusLight}
+                  equivMode={currentEquiv}
+                  currentUser={currentUser}
+                  onSelectEquiv={handleSelectEquiv}
                   onSelectAlternative={handleSelectAlternative}
                   onRestStateChange={setIsResting}
                   onAckOverload={handleAckOverload}
@@ -569,6 +646,9 @@ export default function App() {
           onClose={() => setShowPlanSettings(false)}
         />
       )}
+
+      {/* V3.0 (V6)：滑动备忘智库抽屉 */}
+      <V6MemoDrawer open={showMemo} onClose={() => setShowMemo(false)} />
     </div>
   )
 }
